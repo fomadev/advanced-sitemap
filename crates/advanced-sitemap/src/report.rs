@@ -74,6 +74,9 @@ pub struct ArtifactReport {
     pub entries: Option<u64>,
     /// Exact size in bytes.
     pub bytes: u64,
+    /// The published file already had these exact bytes, so it was not
+    /// rewritten (`PublishPolicy::Changed`).
+    pub unchanged: bool,
 }
 
 /// Store information included in reports.

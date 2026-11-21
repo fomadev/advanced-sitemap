@@ -8,13 +8,13 @@ use sitemap_model::limits::{MAX_SITEMAP_BYTES, MAX_URLS_PER_SITEMAP};
 use sitemap_model::{SitemapUrl, W3cDateTime};
 use sitemap_protocol::{
     ConfigDocument, DEFAULT_MAX_DOCUMENT_BYTES, DEFAULT_MAX_LINE_BYTES, ExtensionSetting,
-    IndexSetting, InvalidPolicySetting, JsonArrayReader, JsonlReader, SourceFormat, SourceRecord,
-    StrategySetting, ValidationModeSetting,
+    IndexSetting, InvalidPolicySetting, JsonArrayReader, JsonlReader, PublishSetting, SourceFormat,
+    SourceRecord, StrategySetting, ValidationModeSetting,
 };
 use sitemap_validation::{ValidationMode, ValidationOptions};
 use sitemap_xml::Namespaces;
 
-use crate::engine::{EngineConfig, EngineError, InvalidPolicy};
+use crate::engine::{EngineConfig, EngineError, InvalidPolicy, PublishPolicy};
 
 /// Where records come from.
 #[derive(Clone, Debug)]
@@ -140,6 +140,10 @@ pub fn resolve_config(doc: ConfigDocument, base_dir: &Path) -> Result<ResolvedCo
         },
         dedupe: doc.validation.dedupe,
         hreflang_reciprocity: doc.validation.hreflang_reciprocity,
+        publish: match doc.output.publish {
+            PublishSetting::All => PublishPolicy::All,
+            PublishSetting::Changed => PublishPolicy::Changed,
+        },
         max_diagnostics: doc.validation.max_diagnostics as usize,
         strategy,
         limits,
