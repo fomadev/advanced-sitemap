@@ -8,6 +8,12 @@ contain breaking changes.
 
 ### Added
 
+- Google News extension: `news` in URL records (`output.extensions:
+  ["news"]`), 5 new diagnostic codes (`NEWS_*`), XML in the order of
+  Google's `sitemap-news/0.9` XSD, reading by `inspect`, and the 1,000
+  news-per-file limit in partitioning. `news` conformance fixture validated
+  against Google's XSD in CI.
+
 - Google video extension: `videos` in URL records, validation with 15 new
   diagnostic codes (`EXTENSION_NOT_DECLARED`, `VIDEO_*`), XML output in the
   order of Google's `sitemap-video/1.1` XSD, and reading by `inspect`.
@@ -30,6 +36,9 @@ contain breaking changes.
   code that builds them with struct literals must add the field.
   `Namespaces::DEFAULT` (`xhtml` and `image`) is what the engine declares by
   default; `Namespaces::ALL` now includes `video`.
+- `UrlEntry` gains `news`, `Namespaces` gains `news`, `PushError` gains
+  `NewsLimit`, and `InspectReport` gains `with_videos`, `with_news` and
+  `news_elements`.
 - `quick-xml` is now a runtime dependency (of `sitemap-reader`); `flate2`
   (pure Rust backend) is added. See ADR-0009.
 
