@@ -36,3 +36,12 @@ complète.
 - Un harnais d'injection de pannes dans le store est nécessaire (I3, I4).
 - Les décisions de format (ADR-0011) et de partitionnement (ADR-0012) sont
   prises séparément pour pouvoir être révisées.
+
+## Mise en œuvre de la phase A (2026-11-22)
+
+La phase A est implémentée **sans snapshot** : au lieu de comparer une
+empreinte stockée, le store compare les octets produits au fichier publié
+lui-même. Avantages : aucun nouveau format, aucune décision de hachage
+nécessaire (l'ADR-0011 reste en suspens pour la phase B), et un fichier
+modifié hors du moteur est détecté et republié. Mesures dans
+`docs/performance/README.md`.

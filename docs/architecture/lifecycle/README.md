@@ -104,20 +104,37 @@ Chaque phase est utile seule, mesurée, et protégée par l'oracle I1.
 
 | Phase | Contenu | Gain attendu | Mesure de validation |
 |---|---|---|---|
-| A | Empreinte stable des partitions et snapshot de partitions ; ne publier que les fichiers dont l'empreinte change | Moins d'écritures disque et un `lastmod` d'index stable | `generate` relancé sans changement : 0 fichier publié ; durée comparée à `validate` |
+| A (**faite**, voir ci-dessous) | Ne publier que les fichiers dont les octets changent, par comparaison avec le fichier publié | Moins d'écritures disque et un `lastmod` d'index stable | `generate` relancé sans changement : 0 fichier publié ; durée égale à `validate` |
 | B | Snapshot par URL (clé et contenu), Diff Engine, rapport de changements | Liste exacte des ajouts, retraits et modifications | Comparaison avec un diff calculé par relecture complète |
 | C | Stratégie `consistent-hash` (ADR-0012) et planner qui chiffre les déplacements | Agrandir le site sans déplacer la plupart des URL | Fraction d'URL déplacées mesurée contre 1/(N+1) |
 | D | Flux de changements (ajouts, mises à jour, suppressions) appliqués sur les fichiers publiés (ADR-0013) | Plus besoin de relire toute la source | Oracle I1 entre application du flux et régénération complète |
 
 La phase A ne demande aucun nouveau format d'entrée et ne change aucun
-contrat existant : c'est le point de départ recommandé.
+contrat existant.
+
+### Phase A : ce qui a été fait (2026-11-22)
+
+- `output.publish = "changed"` (ou `generate --skip-unchanged`).
+- Implémentation plus simple que prévu : pas de snapshot ni d'empreinte
+  persistée. Le store compare les octets produits au fichier publié de même
+  nom pendant l'écriture et n'écrit rien tant qu'ils sont identiques.
+- Le `fsync` a été déplacé juste avant le renommage (même garantie).
+- Mesures (5 M d'URL, aucun changement) : 22,4 à 22,8 s contre 44 à 123 s
+  pour tout republier, soit le coût de `validate` (23,6 s). Une URL modifiée
+  sur 1 M : 5,8 s, un seul sitemap et le manifest republiés.
+- Tests : oracle d'équivalence (I1) sur 480 étapes aléatoires en mémoire et
+  50 sur disque, pannes injectées à 8 points de la publication (I3, I4),
+  test CLI qui vérifie que la date de modification des fichiers identiques
+  ne change pas.
 
 ## 5. Questions ouvertes (à mesurer avant de trancher)
 
-1. **Coût de `fsync`** par rapport à l'écriture elle-même. La phase A écrit
-   d'abord chaque partition dans la zone temporaire puis compare son
-   empreinte ; si le coût dominant est l'écriture, il faudra hacher avant
-   d'écrire (tampon d'une partition, au plus 50 Mio) plutôt qu'après.
+1. ~~Coût de `fsync`~~ **Tranché par la mesure** : comparer après avoir
+   écrit en staging ne faisait rien gagner (12,2 s contre 12,4 s à 1 M
+   d'URL). Déplacer le `fsync` a ramené la réexécution à 4,5 s à 1 M, mais
+   pas à 5 M (74,8 s) : l'écriture en staging dominait encore. La
+   comparaison pendant l'écriture, sans fichier temporaire, a donné 22,6 s
+   à 5 M.
 2. **Emplacement du snapshot** : le dossier de sortie est souvent public.
    Le snapshot ne contient que des empreintes d'URL déjà publiques, mais il
    peut peser 32 octets par URL. Proposition : un dossier d'état séparé
