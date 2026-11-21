@@ -9,6 +9,7 @@
 
 use std::collections::HashSet;
 
+mod news;
 mod video;
 
 use sitemap_model::limits::MAX_IMAGES_PER_URL;
@@ -249,6 +250,7 @@ impl Validator {
         let alternates = self.validate_alternates(raw, loc.as_ref(), location, out);
         let images = self.validate_images(raw, location, out);
         let videos = self.validate_videos(raw, loc.as_ref(), location, out);
+        let news = self.validate_news(raw, location, out);
 
         let has_error = out[first..].iter().any(Diagnostic::is_error);
         match loc {
@@ -260,6 +262,7 @@ impl Validator {
                 alternates,
                 images,
                 videos,
+                news,
             }),
             _ => None,
         }
