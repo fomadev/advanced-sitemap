@@ -1,0 +1,44 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license-file = "LICENSE"
+repository = "https://github.com/fomadev/advanced-sitemap"
+publish = false
+
+[workspace.dependencies]
+sitemap-model = { path = "crates/sitemap-model" }
+sitemap-validation = { path = "crates/sitemap-validation" }
+sitemap-xml = { path = "crates/sitemap-xml" }
+sitemap-storage = { path = "crates/sitemap-storage" }
+sitemap-index = { path = "crates/sitemap-index" }
+sitemap-protocol = { path = "crates/sitemap-protocol" }
+advanced-sitemap = { path = "crates/advanced-sitemap" }
+
+url = "2.5.9"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+clap = { version = "4.6.9", features = ["derive"] }
+
+# Development only.
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
+quick-xml = "0.42.0"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+
+[profile.release]
+debug = "line-tables-only"
+
+[profile.bench]
+debug = "line-tables-only"

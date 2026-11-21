@@ -1,0 +1,18 @@
+[package]
+name = "sitemap-xml"
+description = "Streaming, deterministic XML serialization of sitemaps and sitemap indexes."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+sitemap-model.workspace = true
+
+[dev-dependencies]
+quick-xml.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "1.0",
+  "site": "https://example.com",
+  "urls": [
+    { "loc": "https://example.com/", "lastmod": "2026-11-21", "changefreq": "daily", "priority": 1 },
+    { "loc": "https://example.com/about", "lastmod": "2026-10-01T08:00:00+02:00" },
+    { "url": "https://example.com/search?q=a&lang=fr", "priority": 0.25 }
+  ]
+}

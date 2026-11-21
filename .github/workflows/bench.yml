@@ -1,0 +1,17 @@
+name: Benchmarks
+
+# Benchmarks are informative and never block merges. Manual trigger only:
+# shared CI runners are too noisy for regression gates.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  criterion:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show active-toolchain
+      - run: cargo bench -p advanced-sitemap --bench pipeline --locked

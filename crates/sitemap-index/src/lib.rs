@@ -1,0 +1,766 @@
+//! Partitioning and sitemap index planning (ADR-0005).
+//!
+//! [`Partitioner`] routes validated entries to sitemap files ("partitions")
+//! without ever exceeding the configured limits: each `<url>` block is encoded
+//! into a scratch buffer first, so its exact size is known before it is
+//! written. [`plan_layout`] then decides the public file names and whether a
+//! sitemap index is needed.
+
+mod fnv;
+
+use std::fmt;
+use std::io;
+use std::num::NonZeroU32;
+
+use sitemap_model::limits::{MAX_SITEMAP_BYTES, MAX_SITEMAPS_PER_INDEX, MAX_URLS_PER_SITEMAP};
+use sitemap_model::{IndexEntry, SitemapUrl, UrlEntry, W3cDateTime};
+use sitemap_storage::{ArtifactName, ArtifactStore, ArtifactWriter, Publication};
+use sitemap_xml::{Namespaces, URLSET_FOOTER, UrlsetWriter, XmlError, encode_url, urlset_header};
+
+pub use fnv::fnv1a64;
+
+/// How entries are assigned to partitions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PartitionStrategy {
+    /// Fill partitions in input order; open a new one when a limit is reached.
+    Sequential,
+    /// `partition = fnv1a64(loc) mod partitions`. A URL keeps its partition as
+    /// long as the partition count is unchanged. A full partition is an error.
+    StableHash {
+        /// Number of partitions.
+        partitions: NonZeroU32,
+    },
+}
+
+/// Per-file limits. Lower them to keep a safety margin.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PartitionLimits {
+    max_urls: u32,
+    max_bytes: u64,
+}
+
+/// Invalid partition limits.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LimitsError(String);
+
+impl fmt::Display for LimitsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for LimitsError {}
+
+/// Smallest accepted byte limit: room for the header, the footer and a few entries.
+pub const MIN_PARTITION_BYTES: u64 = 4_096;
+
+impl PartitionLimits {
+    /// Validates limits: `1..=50_000` URLs and `4_096..=52_428_800` bytes.
+    pub fn new(max_urls: u32, max_bytes: u64) -> Result<Self, LimitsError> {
+        if max_urls == 0 || max_urls > MAX_URLS_PER_SITEMAP {
+            return Err(LimitsError(format!(
+                "maxUrls must be between 1 and {MAX_URLS_PER_SITEMAP}, got {max_urls}"
+            )));
+        }
+        if !(MIN_PARTITION_BYTES..=MAX_SITEMAP_BYTES).contains(&max_bytes) {
+            return Err(LimitsError(format!(
+                "maxBytes must be between {MIN_PARTITION_BYTES} and {MAX_SITEMAP_BYTES}, got {max_bytes}"
+            )));
+        }
+        Ok(Self {
+            max_urls,
+            max_bytes,
+        })
+    }
+
+    /// Maximum URLs per file.
+    pub fn max_urls(self) -> u32 {
+        self.max_urls
+    }
+
+    /// Maximum bytes per file.
+    pub fn max_bytes(self) -> u64 {
+        self.max_bytes
+    }
+}
+
+impl Default for PartitionLimits {
+    fn default() -> Self {
+        Self {
+            max_urls: MAX_URLS_PER_SITEMAP,
+            max_bytes: MAX_SITEMAP_BYTES,
+        }
+    }
+}
+
+/// A closed partition, staged in the store.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PartitionSummary {
+    /// 1-based partition number.
+    pub id: u32,
+    /// Name under which the partition is staged (`<stem>-<id>.xml`).
+    pub staged_name: ArtifactName,
+    /// Number of URLs.
+    pub urls: u64,
+    /// Exact size in bytes.
+    pub bytes: u64,
+    /// Latest `lastmod` of the partition's entries (UTC comparison).
+    pub lastmod: Option<W3cDateTime>,
+}
+
+/// Why an entry could not be placed.
+#[derive(Debug)]
+pub enum PushError {
+    /// The entry alone exceeds the byte limit of a file.
+    EntryTooLarge {
+        /// Size of the document if it contained only this entry.
+        bytes: u64,
+        /// Configured limit.
+        limit: u64,
+    },
+    /// A stable-hash partition is full.
+    PartitionFull {
+        /// 1-based partition number.
+        partition: u32,
+        /// Configured URL limit.
+        max_urls: u32,
+        /// Configured byte limit.
+        max_bytes: u64,
+    },
+    /// Serialization failed.
+    Xml(XmlError),
+    /// The store failed.
+    Io(io::Error),
+}
+
+impl fmt::Display for PushError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PushError::EntryTooLarge { bytes, limit } => write!(
+                f,
+                "a document containing only this entry would be {bytes} bytes, above the {limit}-byte limit"
+            ),
+            PushError::PartitionFull {
+                partition,
+                max_urls,
+                max_bytes,
+            } => write!(
+                f,
+                "stable-hash partition {partition} is full ({max_urls} URLs or {max_bytes} bytes)"
+            ),
+            PushError::Xml(error) => write!(f, "{error}"),
+            PushError::Io(error) => write!(f, "store error: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for PushError {}
+
+impl From<XmlError> for PushError {
+    fn from(error: XmlError) -> Self {
+        match error {
+            XmlError::Io(error) => PushError::Io(error),
+            other => PushError::Xml(other),
+        }
+    }
+}
+
+impl From<io::Error> for PushError {
+    fn from(error: io::Error) -> Self {
+        PushError::Io(error)
+    }
+}
+
+struct OpenPartition {
+    id: u32,
+    name: ArtifactName,
+    writer: UrlsetWriter<Box<dyn ArtifactWriter>>,
+    lastmod: Option<W3cDateTime>,
+}
+
+impl OpenPartition {
+    fn close(self) -> Result<PartitionSummary, PushError> {
+        let urls = self.writer.urls();
+        let (artifact, bytes) = self.writer.finish()?;
+        let stored = artifact.finish()?;
+        debug_assert_eq!(stored, bytes);
+        Ok(PartitionSummary {
+            id: self.id,
+            staged_name: self.name,
+            urls,
+            bytes,
+            lastmod: self.lastmod,
+        })
+    }
+}
+
+/// Routes entries to staged partition files.
+pub struct Partitioner<'s> {
+    store: &'s mut dyn ArtifactStore,
+    strategy: PartitionStrategy,
+    limits: PartitionLimits,
+    namespaces: Namespaces,
+    stem: String,
+    header_len: u64,
+    slots: Vec<Option<OpenPartition>>,
+    closed: Vec<PartitionSummary>,
+    next_sequential_id: u32,
+    scratch: Vec<u8>,
+}
+
+impl<'s> Partitioner<'s> {
+    /// A partitioner writing `<stem>-<n>.xml` files into `store`, declaring
+    /// `namespaces` on every file.
+    pub fn new(
+        store: &'s mut dyn ArtifactStore,
+        strategy: PartitionStrategy,
+        limits: PartitionLimits,
+        namespaces: Namespaces,
+        stem: &str,
+    ) -> Self {
+        let slot_count = match strategy {
+            PartitionStrategy::Sequential => 1,
+            PartitionStrategy::StableHash { partitions } => partitions.get() as usize,
+        };
+        Self {
+            store,
+            strategy,
+            limits,
+            namespaces,
+            stem: stem.to_owned(),
+            header_len: urlset_header(namespaces).len() as u64,
+            slots: (0..slot_count).map(|_| None).collect(),
+            closed: Vec::new(),
+            next_sequential_id: 1,
+            scratch: Vec::with_capacity(1024),
+        }
+    }
+
+    /// Places one entry. Returns the 1-based partition number.
+    pub fn push(&mut self, entry: &UrlEntry) -> Result<u32, PushError> {
+        self.namespaces
+            .check_covers(Namespaces::required_by(entry))?;
+        self.scratch.clear();
+        encode_url(entry, &mut self.scratch)?;
+        let block = self.scratch.len() as u64;
+        let footer = URLSET_FOOTER.len() as u64;
+
+        let alone = self.header_len + block + footer;
+        if alone > self.limits.max_bytes {
+            return Err(PushError::EntryTooLarge {
+                bytes: alone,
+                limit: self.limits.max_bytes,
+            });
+        }
+
+        let slot = match self.strategy {
+            PartitionStrategy::Sequential => 0,
+            PartitionStrategy::StableHash { partitions } => {
+                (fnv1a64(entry.loc.as_str().as_bytes()) % u64::from(partitions.get())) as usize
+            }
+        };
+
+        if let Some(open) = &self.slots[slot] {
+            let full = open.writer.urls() >= u64::from(self.limits.max_urls)
+                || open.writer.bytes() + block + footer > self.limits.max_bytes;
+            if full {
+                match self.strategy {
+                    PartitionStrategy::Sequential => {
+                        if let Some(open) = self.slots[slot].take() {
+                            self.closed.push(open.close()?);
+                        }
+                    }
+                    PartitionStrategy::StableHash { .. } => {
+                        return Err(PushError::PartitionFull {
+                            partition: open.id,
+                            max_urls: self.limits.max_urls,
+                            max_bytes: self.limits.max_bytes,
+                        });
+                    }
+                }
+            }
+        }
+
+        if self.slots[slot].is_none() {
+            let id = match self.strategy {
+                PartitionStrategy::Sequential => {
+                    let id = self.next_sequential_id;
+                    self.next_sequential_id += 1;
+                    id
+                }
+                PartitionStrategy::StableHash { .. } => slot as u32 + 1,
+            };
+            self.slots[slot] = Some(self.open(id)?);
+        }
+
+        let Some(open) = self.slots[slot].as_mut() else {
+            return Err(PushError::Io(io::Error::other(
+                "partition slot unexpectedly empty",
+            )));
+        };
+        open.writer.write_encoded(&self.scratch)?;
+        if let Some(lastmod) = &entry.lastmod {
+            let newer = open
+                .lastmod
+                .as_ref()
+                .is_none_or(|current| lastmod.cmp_instant(current).is_gt());
+            if newer {
+                open.lastmod = Some(lastmod.clone());
+            }
+        }
+        Ok(open.id)
+    }
+
+    fn open(&mut self, id: u32) -> Result<OpenPartition, PushError> {
+        let name = partition_name(&self.stem, id)?;
+        let artifact = self.store.create(&name)?;
+        let writer = UrlsetWriter::new(artifact, self.namespaces)?;
+        Ok(OpenPartition {
+            id,
+            name,
+            writer,
+            lastmod: None,
+        })
+    }
+
+    /// Closes every open partition and returns all partitions by id. When no
+    /// entry was pushed, a single empty partition is produced so that the
+    /// output always contains a valid document.
+    pub fn finish(mut self) -> Result<Vec<PartitionSummary>, PushError> {
+        for slot in &mut self.slots {
+            if let Some(open) = slot.take() {
+                self.closed.push(open.close()?);
+            }
+        }
+        if self.closed.is_empty() {
+            let empty = self.open(1)?;
+            self.closed.push(empty.close()?);
+        }
+        self.closed.sort_by_key(|p| p.id);
+        Ok(self.closed)
+    }
+}
+
+/// `<stem>-<id>.xml`
+pub fn partition_name(stem: &str, id: u32) -> io::Result<ArtifactName> {
+    ArtifactName::new(format!("{stem}-{id}.xml")).map_err(|e| io::Error::other(e.to_string()))
+}
+
+/// When to produce a sitemap index.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum IndexMode {
+    /// Only when there is more than one partition.
+    #[default]
+    Auto,
+    /// Always, even for a single partition.
+    Always,
+    /// Never; every partition is published under its own name.
+    Never,
+}
+
+/// Public base URL of the published files (where `<stem>-<n>.xml` is served).
+///
+/// The path is treated as a directory: a missing trailing slash is added, so
+/// `https://example.com/sitemaps` and `https://example.com/sitemaps/` are
+/// equivalent. Query strings and fragments are rejected.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PublicBaseUrl(SitemapUrl);
+
+impl PublicBaseUrl {
+    /// Validates a base URL.
+    pub fn new(url: SitemapUrl) -> Result<Self, String> {
+        let text = url.as_str();
+        if text.contains('?') || url.has_fragment() {
+            return Err(format!(
+                "public base URL {text} must not contain a query string or fragment"
+            ));
+        }
+        if text.ends_with('/') {
+            Ok(Self(url))
+        } else {
+            SitemapUrl::new(&format!("{text}/"))
+                .map(Self)
+                .map_err(|e| e.to_string())
+        }
+    }
+
+    /// The base URL (always ending with `/`).
+    pub fn url(&self) -> &SitemapUrl {
+        &self.0
+    }
+}
+
+/// Output layout settings.
+#[derive(Clone, Debug)]
+pub struct Layout {
+    /// File stem (`sitemap` gives `sitemap.xml`, `sitemap-1.xml`...).
+    pub stem: String,
+    /// Index policy.
+    pub index: IndexMode,
+    /// Public base URL, required when an index is produced.
+    pub public_base_url: Option<PublicBaseUrl>,
+}
+
+impl Layout {
+    /// Name of the single sitemap or of the index: `<stem>.xml`.
+    pub fn main_name(&self) -> io::Result<ArtifactName> {
+        ArtifactName::new(format!("{}.xml", self.stem)).map_err(|e| io::Error::other(e.to_string()))
+    }
+}
+
+/// What to publish.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LayoutPlan {
+    /// Partition publications, in order.
+    pub partitions: Vec<Publication>,
+    /// The index to write, if any: its name and entries.
+    pub index: Option<(ArtifactName, Vec<IndexEntry>)>,
+}
+
+/// The layout cannot be produced.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LayoutError {
+    /// An index is needed but no public base URL is configured.
+    PublicBaseUrlMissing {
+        /// Number of partitions.
+        partitions: usize,
+    },
+    /// More partitions than an index may reference.
+    IndexLimitExceeded {
+        /// Number of partitions.
+        partitions: usize,
+    },
+    /// A file name could not be built.
+    InvalidName(String),
+}
+
+impl fmt::Display for LayoutError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LayoutError::PublicBaseUrlMissing { partitions } => write!(
+                f,
+                "{partitions} sitemap files require an index, but no public base URL is configured"
+            ),
+            LayoutError::IndexLimitExceeded { partitions } => write!(
+                f,
+                "{partitions} sitemap files exceed the {MAX_SITEMAPS_PER_INDEX} files an index may reference"
+            ),
+            LayoutError::InvalidName(reason) => f.write_str(reason),
+        }
+    }
+}
+
+impl std::error::Error for LayoutError {}
+
+/// Decides public names and the index for a set of partitions.
+pub fn plan_layout(
+    partitions: &[PartitionSummary],
+    layout: &Layout,
+) -> Result<LayoutPlan, LayoutError> {
+    let main = layout
+        .main_name()
+        .map_err(|e| LayoutError::InvalidName(e.to_string()))?;
+    let needs_index = match layout.index {
+        IndexMode::Always => true,
+        IndexMode::Never => false,
+        IndexMode::Auto => partitions.len() > 1,
+    };
+
+    if !needs_index {
+        let publications = if partitions.len() == 1 && layout.index == IndexMode::Auto {
+            vec![Publication {
+                staged: partitions[0].staged_name.clone(),
+                target: main,
+            }]
+        } else {
+            partitions
+                .iter()
+                .map(|p| Publication {
+                    staged: p.staged_name.clone(),
+                    target: p.staged_name.clone(),
+                })
+                .collect()
+        };
+        return Ok(LayoutPlan {
+            partitions: publications,
+            index: None,
+        });
+    }
+
+    if partitions.len() > MAX_SITEMAPS_PER_INDEX as usize {
+        return Err(LayoutError::IndexLimitExceeded {
+            partitions: partitions.len(),
+        });
+    }
+    let base = layout
+        .public_base_url
+        .as_ref()
+        .ok_or(LayoutError::PublicBaseUrlMissing {
+            partitions: partitions.len(),
+        })?;
+
+    let mut entries = Vec::with_capacity(partitions.len());
+    let mut publications = Vec::with_capacity(partitions.len());
+    for partition in partitions {
+        let loc = base
+            .url()
+            .join(partition.staged_name.as_str())
+            .map_err(|e| LayoutError::InvalidName(e.to_string()))?;
+        entries.push(IndexEntry {
+            loc,
+            lastmod: partition.lastmod.clone(),
+        });
+        publications.push(Publication {
+            staged: partition.staged_name.clone(),
+            target: partition.staged_name.clone(),
+        });
+    }
+    Ok(LayoutPlan {
+        partitions: publications,
+        index: Some((main, entries)),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sitemap_storage::MemoryStore;
+
+    fn entry(i: usize) -> UrlEntry {
+        UrlEntry::new(SitemapUrl::new(&format!("https://example.com/page/{i}")).unwrap())
+    }
+
+    fn run(
+        strategy: PartitionStrategy,
+        limits: PartitionLimits,
+        count: usize,
+    ) -> (Result<Vec<PartitionSummary>, PushError>, MemoryStore) {
+        let store = MemoryStore::new();
+        let mut handle = store.clone();
+        let mut partitioner =
+            Partitioner::new(&mut handle, strategy, limits, Namespaces::NONE, "sitemap");
+        for i in 0..count {
+            if let Err(error) = partitioner.push(&entry(i)) {
+                return (Err(error), store);
+            }
+        }
+        (partitioner.finish(), store)
+    }
+
+    #[test]
+    fn sequential_splits_exactly_on_url_count() {
+        let limits = PartitionLimits::new(3, MAX_SITEMAP_BYTES).unwrap();
+        let (parts, _) = run(PartitionStrategy::Sequential, limits, 7);
+        let parts = parts.unwrap();
+        let counts: Vec<u64> = parts.iter().map(|p| p.urls).collect();
+        assert_eq!(counts, [3, 3, 1]);
+        let names: Vec<&str> = parts.iter().map(|p| p.staged_name.as_str()).collect();
+        assert_eq!(names, ["sitemap-1.xml", "sitemap-2.xml", "sitemap-3.xml"]);
+
+        let (parts, _) = run(PartitionStrategy::Sequential, limits, 6);
+        assert_eq!(
+            parts.unwrap().len(),
+            2,
+            "exactly full partitions do not create an extra file"
+        );
+    }
+
+    #[test]
+    fn sequential_respects_byte_limit_exactly() {
+        // URLs page/1000..page/9999 all have the same encoded length.
+        let header = urlset_header(Namespaces::NONE).len() as u64;
+        let footer = URLSET_FOOTER.len() as u64;
+        let mut sample = Vec::new();
+        encode_url(&entry(1000), &mut sample).unwrap();
+        let max_bytes = MIN_PARTITION_BYTES;
+        let per_file = (max_bytes - header - footer) / sample.len() as u64;
+        let limits = PartitionLimits::new(50_000, max_bytes).unwrap();
+        let count = (per_file as usize) * 2 + 1;
+        let store = MemoryStore::new();
+        let mut handle = store.clone();
+        let mut partitioner = Partitioner::new(
+            &mut handle,
+            PartitionStrategy::Sequential,
+            limits,
+            Namespaces::NONE,
+            "sitemap",
+        );
+        let mut block_len = None;
+        for i in 1000..1000 + count {
+            let e = entry(i);
+            let mut b = Vec::new();
+            encode_url(&e, &mut b).unwrap();
+            block_len.get_or_insert(b.len());
+            assert_eq!(Some(b.len()), block_len);
+            partitioner.push(&e).unwrap();
+        }
+        let parts = partitioner.finish().unwrap();
+        assert_eq!(parts.len(), 3);
+        assert_eq!(parts[0].urls, per_file);
+        assert_eq!(parts[1].urls, per_file);
+        assert_eq!(parts[2].urls, 1);
+        for part in &parts {
+            assert!(part.bytes <= max_bytes);
+        }
+        // A full partition plus one more block would have crossed the limit.
+        assert!(parts[0].bytes + sample.len() as u64 > max_bytes);
+        let published = store.staged_count().unwrap();
+        assert_eq!(published, 3);
+    }
+
+    #[test]
+    fn entry_too_large_is_reported() {
+        let limits = PartitionLimits::new(10, MIN_PARTITION_BYTES).unwrap();
+        let big = UrlEntry::new(
+            SitemapUrl::new(&format!("https://example.com/{}", "a".repeat(2000))).unwrap(),
+        )
+        .with_alternate(
+            sitemap_model::LanguageTag::parse("en").unwrap(),
+            SitemapUrl::new(&format!("https://example.com/{}", "b".repeat(2000))).unwrap(),
+        );
+        let store = MemoryStore::new();
+        let mut handle = store.clone();
+        let mut partitioner = Partitioner::new(
+            &mut handle,
+            PartitionStrategy::Sequential,
+            limits,
+            Namespaces::ALL,
+            "s",
+        );
+        assert!(matches!(
+            partitioner.push(&big),
+            Err(PushError::EntryTooLarge { .. })
+        ));
+    }
+
+    #[test]
+    fn stable_hash_is_deterministic_and_reports_overflow() {
+        let partitions = NonZeroU32::new(4).unwrap();
+        let strategy = PartitionStrategy::StableHash { partitions };
+        let (a, _) = run(strategy, PartitionLimits::default(), 1000);
+        let (b, _) = run(strategy, PartitionLimits::default(), 1000);
+        let a = a.unwrap();
+        assert_eq!(a, b.unwrap());
+        assert_eq!(a.iter().map(|p| p.urls).sum::<u64>(), 1000);
+        assert_eq!(a.len(), 4);
+
+        // Each URL lands in fnv1a64(loc) % 4.
+        let store = MemoryStore::new();
+        let mut handle = store.clone();
+        let mut partitioner = Partitioner::new(
+            &mut handle,
+            strategy,
+            PartitionLimits::default(),
+            Namespaces::NONE,
+            "s",
+        );
+        for i in 0..50 {
+            let e = entry(i);
+            let expected = (fnv1a64(e.loc.as_str().as_bytes()) % 4) as u32 + 1;
+            assert_eq!(partitioner.push(&e).unwrap(), expected);
+        }
+
+        let tight = PartitionLimits::new(100, MAX_SITEMAP_BYTES).unwrap();
+        let (overflow, _) = run(strategy, tight, 1000);
+        assert!(matches!(overflow, Err(PushError::PartitionFull { .. })));
+    }
+
+    #[test]
+    fn empty_input_yields_one_empty_partition() {
+        let (parts, store) = run(PartitionStrategy::Sequential, PartitionLimits::default(), 0);
+        let parts = parts.unwrap();
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].urls, 0);
+        assert_eq!(store.staged_count().unwrap(), 1);
+    }
+
+    #[test]
+    fn lastmod_is_the_latest_instant() {
+        let store = MemoryStore::new();
+        let mut handle = store.clone();
+        let mut partitioner = Partitioner::new(
+            &mut handle,
+            PartitionStrategy::Sequential,
+            PartitionLimits::default(),
+            Namespaces::NONE,
+            "sitemap",
+        );
+        for (i, date) in [
+            "2026-01-02",
+            "2026-03-01T10:00:00+05:00",
+            "2026-03-01T04:59:00Z",
+        ]
+        .iter()
+        .enumerate()
+        {
+            partitioner
+                .push(&entry(i).with_lastmod(W3cDateTime::parse(date).unwrap()))
+                .unwrap();
+        }
+        let parts = partitioner.finish().unwrap();
+        assert_eq!(
+            parts[0].lastmod.as_ref().unwrap().as_str(),
+            "2026-03-01T10:00:00+05:00"
+        );
+    }
+
+    fn summary(id: u32) -> PartitionSummary {
+        PartitionSummary {
+            id,
+            staged_name: partition_name("sitemap", id).unwrap(),
+            urls: 1,
+            bytes: 100,
+            lastmod: None,
+        }
+    }
+
+    #[test]
+    fn layout_rules() {
+        let base =
+            PublicBaseUrl::new(SitemapUrl::new("https://example.com/maps").unwrap()).unwrap();
+        assert_eq!(base.url().as_str(), "https://example.com/maps/");
+        let mut layout = Layout {
+            stem: "sitemap".into(),
+            index: IndexMode::Auto,
+            public_base_url: None,
+        };
+
+        let single = plan_layout(&[summary(1)], &layout).unwrap();
+        assert!(single.index.is_none());
+        assert_eq!(single.partitions[0].target.as_str(), "sitemap.xml");
+
+        assert_eq!(
+            plan_layout(&[summary(1), summary(2)], &layout),
+            Err(LayoutError::PublicBaseUrlMissing { partitions: 2 })
+        );
+
+        layout.public_base_url = Some(base);
+        let multi = plan_layout(&[summary(1), summary(2)], &layout).unwrap();
+        let (name, entries) = multi.index.unwrap();
+        assert_eq!(name.as_str(), "sitemap.xml");
+        assert_eq!(
+            entries[1].loc.as_str(),
+            "https://example.com/maps/sitemap-2.xml"
+        );
+
+        layout.index = IndexMode::Always;
+        let always = plan_layout(&[summary(1)], &layout).unwrap();
+        assert_eq!(always.partitions[0].target.as_str(), "sitemap-1.xml");
+        assert!(always.index.is_some());
+
+        layout.index = IndexMode::Never;
+        let never = plan_layout(&[summary(1), summary(2)], &layout).unwrap();
+        assert!(never.index.is_none());
+        assert_eq!(never.partitions[1].target.as_str(), "sitemap-2.xml");
+
+        assert!(PublicBaseUrl::new(SitemapUrl::new("https://example.com/?a=1").unwrap()).is_err());
+    }
+
+    #[test]
+    fn limits_validation() {
+        assert!(PartitionLimits::new(0, MAX_SITEMAP_BYTES).is_err());
+        assert!(PartitionLimits::new(50_001, MAX_SITEMAP_BYTES).is_err());
+        assert!(PartitionLimits::new(1, MAX_SITEMAP_BYTES + 1).is_err());
+        assert!(PartitionLimits::new(1, MIN_PARTITION_BYTES - 1).is_err());
+    }
+}

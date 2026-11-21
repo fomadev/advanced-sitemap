@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - run: cargo test --workspace --locked
+      - name: Build release CLI
+        run: cargo build --release -p sitemap-cli --locked
+
+  conformance:
+    # Checks the expected fixture files with tools that share no code with
+    # the engine: a Python checker (expat) and xmllint against the official
+    # sitemaps.org XSD (fixtures without extension namespaces only, because
+    # the XSD validates foreign elements strictly).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python tools/check_sitemaps.py fixtures/conformance
+      - name: Validate against the sitemaps.org XSD
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q libxml2-utils
+          curl -fsSL -o /tmp/sitemap.xsd https://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd
+          curl -fsSL -o /tmp/siteindex.xsd https://www.sitemaps.org/schemas/sitemap/0.9/siteindex.xsd
+          xmllint --noout --schema /tmp/sitemap.xsd fixtures/conformance/basic/expected/sitemap.xml fixtures/conformance/partitioned/expected/sitemap-*.xml
+          xmllint --noout --schema /tmp/siteindex.xsd fixtures/conformance/partitioned/expected/sitemap.xml
+
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories licenses bans sources

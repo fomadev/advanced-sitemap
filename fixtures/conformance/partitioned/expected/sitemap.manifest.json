@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "1.0",
+  "generator": "advanced-sitemap 0.1.0",
+  "totalUrls": 5,
+  "artifacts": [
+    {
+      "name": "sitemap-1.xml",
+      "kind": "sitemap",
+      "entries": 2,
+      "bytes": 401
+    },
+    {
+      "name": "sitemap-2.xml",
+      "kind": "sitemap",
+      "entries": 2,
+      "bytes": 323
+    },
+    {
+      "name": "sitemap-3.xml",
+      "kind": "sitemap",
+      "entries": 1,
+      "bytes": 303
+    },
+    {
+      "name": "sitemap.xml",
+      "kind": "index",
+      "entries": 3,
+      "bytes": 449
+    }
+  ]
+}

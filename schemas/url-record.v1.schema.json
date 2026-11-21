@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/fomadev/advanced-sitemap/schemas/url-record.v1.schema.json",
+  "title": "Advanced Sitemap URL record, protocol 1.0",
+  "description": "One page entry. Semantic checks (W3C Datetime, URL rules, hreflang syntax) are performed by the engine and reported as diagnostics.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "loc": { "type": "string", "description": "Absolute http(s) URL, shorter than 2048 characters, no whitespace." },
+    "url": { "type": "string", "description": "Alias of loc (migration from next-advanced-sitemap). Do not combine with loc." },
+    "lastmod": { "type": "string", "description": "W3C Datetime: YYYY, YYYY-MM, YYYY-MM-DD, or a date-time with a time zone." },
+    "changefreq": { "enum": ["always", "hourly", "daily", "weekly", "monthly", "yearly", "never"] },
+    "priority": { "type": "number", "minimum": 0, "maximum": 1 },
+    "alternates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["hreflang", "href"],
+        "properties": {
+          "hreflang": { "type": "string", "description": "x-default or lang[-Script][-REGION]." },
+          "href": { "type": "string" }
+        }
+      }
+    },
+    "images": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["loc"],
+        "properties": { "loc": { "type": "string" } }
+      }
+    }
+  },
+  "oneOf": [
+    { "required": ["loc"], "not": { "required": ["url"] } },
+    { "required": ["url"], "not": { "required": ["loc"] } }
+  ]
+}
