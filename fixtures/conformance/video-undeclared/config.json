@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "1.1",
+  "urls": [
+    { "loc": "https://example.com/" },
+    {
+      "loc": "https://example.com/watch",
+      "videos": [
+        {
+          "thumbnailLoc": "https://example.com/t.jpg",
+          "title": "A video",
+          "description": "Needs output.extensions.",
+          "contentLoc": "https://cdn.example.com/v.mp4"
+        }
+      ]
+    }
+  ]
+}

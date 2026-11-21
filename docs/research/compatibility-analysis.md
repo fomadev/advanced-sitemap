@@ -17,7 +17,7 @@ figées en erreur bloquante.
 | `lastmod` au format W3C Datetime | sitemaps.org | Validation `LASTMOD_INVALID` |
 | `changefreq`, `priority` | sitemaps.org | Pris en charge pour compatibilité ; Google déclare les ignorer |
 | Images : `image:loc` seul encore utilisé par Google (autres balises retirées en 2022), ≤ 1 000 images par URL | Google | `image:loc` + limite |
-| Vidéo : `thumbnail_loc`, `title`, `description`, `content_loc` ou `player_loc` requis ; certaines balises retirées en 2023 (`category`, `price`, `gallery_loc`, `tvshow` — à reconfirmer) | Google | Phase 3 |
+| Vidéo : `thumbnail_loc`, `title`, `description`, `content_loc` ou `player_loc` requis ; `category`, `price`, `gallery_loc`, `tvshow` et les attributs `allow_embed`/`autoplay` retirés de la documentation en 2022 (vérifié le 2026-11-21) ; implémenté | Google | Phase 3 |
 | News : articles des 2 derniers jours, ≤ 1 000 `news:news` par sitemap | Google | Phase 3, diagnostic avec horloge injectée |
 | Hreflang : codes ISO 639-1 (+ région ISO 3166-1 alpha-2), `x-default`, liens réciproques | Google | Codes et doublons : MVP ; réciprocité : phase 3 |
 | Ping de sitemap | Google | Retiré en 2023 : **non implémenté** |

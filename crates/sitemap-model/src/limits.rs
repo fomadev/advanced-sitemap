@@ -16,3 +16,19 @@ pub const MAX_URL_LENGTH: usize = 2_047;
 
 /// Maximum number of `<image:image>` elements per `<url>` (Google).
 pub const MAX_IMAGES_PER_URL: usize = 1_000;
+
+/// Maximum number of `<video:tag>` elements per video (Google).
+pub const MAX_VIDEO_TAGS: usize = 32;
+
+/// Maximum length of `<video:description>`, in characters (Google).
+pub const MAX_VIDEO_DESCRIPTION_CHARS: usize = 2_048;
+
+/// Maximum length of `<video:title>`, in characters (Google's XSD; the
+/// current documentation states no limit).
+pub const MAX_VIDEO_TITLE_CHARS: usize = 100;
+
+/// Maximum `<video:duration>`, in seconds (8 hours, Google).
+pub const MAX_VIDEO_DURATION_SECONDS: u32 = 28_800;
+
+/// Maximum length of `<video:uploader>`, in characters (Google).
+pub const MAX_VIDEO_UPLOADER_CHARS: usize = 255;

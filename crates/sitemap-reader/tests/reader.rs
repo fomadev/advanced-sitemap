@@ -321,7 +321,7 @@ fn duplicates_and_unknown_elements() {
         r#"<url><loc>https://example.com/</loc><loc>https://example.com/x</loc><title>no</title></url>
 <url><loc>https://example.com/</loc></url>
 <video:video xmlns:video="http://www.google.com/schemas/sitemap-video/1.1"/>
-<url><loc>https://example.com/v</loc><video:video xmlns:video="http://www.google.com/schemas/sitemap-video/1.1"><video:title>t</video:title></video:video></url>"#,
+<url><loc>https://example.com/n</loc><news:news xmlns:news="urn:example:news"><news:title>t</news:title></news:news></url>"#,
     ));
     assert_eq!(
         codes(&report),
@@ -335,8 +335,77 @@ fn duplicates_and_unknown_elements() {
     assert_eq!(report.duplicates, 1);
     assert_eq!(
         report.unsupported_extensions["http://www.google.com/schemas/sitemap-video/1.1"],
-        2
+        1
     );
+    assert_eq!(report.unsupported_extensions["urn:example:news"], 1);
+}
+
+const VIDEO: &str = r#"<url><loc>https://example.com/watch</loc><video:video xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">
+  <video:thumbnail_loc>https://example.com/t.jpg</video:thumbnail_loc>
+  <video:title>Grilling &amp; steaks</video:title>
+  <video:description>How to grill.</video:description>
+  <video:content_loc>https://cdn.example.com/v.mp4</video:content_loc>
+  <video:duration>600</video:duration>
+  <video:rating>4.2</video:rating>
+  <video:view_count>12</video:view_count>
+  <video:tag>steak</video:tag><video:tag>grill</video:tag>
+  <video:category>Cooking</video:category>
+  <video:family_friendly>YES</video:family_friendly>
+  <video:restriction relationship="allow">IE GB</video:restriction>
+  <video:uploader info="https://example.com/chef">Chef</video:uploader>
+  <video:platform relationship="deny">tv</video:platform>
+  <video:live>no</video:live>
+</video:video></url>"#;
+
+#[test]
+fn reads_video_extension() {
+    let (report, items) = run(&urlset(VIDEO));
+    assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics);
+    assert!(report.unsupported_extensions.is_empty());
+    let Item::Url(url) = &items[0] else {
+        panic!("expected a url")
+    };
+    let video = &url.videos[0];
+    assert_eq!(video.title, "Grilling & steaks");
+    assert_eq!(video.duration, Some(600));
+    assert_eq!(video.tags, ["steak", "grill"]);
+    assert_eq!(video.family_friendly, Some(true));
+    assert_eq!(video.live, Some(false));
+    let restriction = video.restriction.as_ref().unwrap();
+    assert_eq!(restriction.relationship.as_str(), "allow");
+    assert_eq!(restriction.countries.len(), 2);
+    assert_eq!(
+        video
+            .uploader
+            .as_ref()
+            .unwrap()
+            .info
+            .as_ref()
+            .unwrap()
+            .as_str(),
+        "https://example.com/chef"
+    );
+}
+
+#[test]
+fn unreadable_video_values_invalidate_the_entry() {
+    let xml = urlset(
+        &VIDEO
+            .replace("<video:duration>600", "<video:duration>ten")
+            .replace("<video:live>no", "<video:live>maybe"),
+    );
+    let (report, items) = run(&xml);
+    assert_eq!(
+        codes(&report),
+        ["VIDEO_VALUE_INVALID", "VIDEO_VALUE_INVALID"]
+    );
+    assert!(items.is_empty());
+
+    let missing = urlset(&VIDEO.replace(
+        "<video:content_loc>https://cdn.example.com/v.mp4</video:content_loc>",
+        "",
+    ));
+    assert_eq!(codes(&run(&missing).0), ["VIDEO_LOCATION_MISSING"]);
 }
 
 #[test]

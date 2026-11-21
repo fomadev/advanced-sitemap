@@ -9,7 +9,7 @@
 use std::fmt;
 use std::io::{self, Write};
 
-use sitemap_model::{IndexEntry, UrlEntry};
+use sitemap_model::{IndexEntry, UrlEntry, Video};
 
 /// The XML declaration that starts every document.
 pub const XML_DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
@@ -19,6 +19,8 @@ pub const SITEMAP_NS: &str = "http://www.sitemaps.org/schemas/sitemap/0.9";
 pub const XHTML_NS: &str = "http://www.w3.org/1999/xhtml";
 /// Namespace of Google's image extension.
 pub const IMAGE_NS: &str = "http://www.google.com/schemas/sitemap-image/1.1";
+/// Namespace of Google's video extension.
+pub const VIDEO_NS: &str = "http://www.google.com/schemas/sitemap-video/1.1";
 /// Closing tag of a `<urlset>` document.
 pub const URLSET_FOOTER: &str = "</urlset>\n";
 /// Closing tag of a `<sitemapindex>` document.
@@ -81,6 +83,8 @@ pub struct Namespaces {
     pub xhtml: bool,
     /// `xmlns:image`, required by images.
     pub image: bool,
+    /// `xmlns:video`, required by videos.
+    pub video: bool,
 }
 
 impl Namespaces {
@@ -88,11 +92,21 @@ impl Namespaces {
     pub const NONE: Namespaces = Namespaces {
         xhtml: false,
         image: false,
+        video: false,
+    };
+    /// The namespaces the engine declares by default on every streamed
+    /// file: `xhtml` and `image`. Other extensions are declared on demand
+    /// (`output.extensions`), so that existing output stays byte-identical.
+    pub const DEFAULT: Namespaces = Namespaces {
+        xhtml: true,
+        image: true,
+        video: false,
     };
     /// Every extension supported by this version.
     pub const ALL: Namespaces = Namespaces {
         xhtml: true,
         image: true,
+        video: true,
     };
 
     /// Namespaces needed by one entry.
@@ -100,7 +114,23 @@ impl Namespaces {
         Namespaces {
             xhtml: !entry.alternates.is_empty(),
             image: !entry.images.is_empty(),
+            video: !entry.videos.is_empty(),
         }
+    }
+
+    /// Prefixes used by `needed` that `self` does not declare.
+    pub fn missing(self, needed: Namespaces) -> Vec<&'static str> {
+        let mut prefixes = Vec::new();
+        if needed.xhtml && !self.xhtml {
+            prefixes.push("xhtml");
+        }
+        if needed.image && !self.image {
+            prefixes.push("image");
+        }
+        if needed.video && !self.video {
+            prefixes.push("video");
+        }
+        prefixes
     }
 
     /// Namespaces needed by a set of entries.
@@ -115,18 +145,16 @@ impl Namespaces {
         Namespaces {
             xhtml: self.xhtml || other.xhtml,
             image: self.image || other.image,
+            video: self.video || other.video,
         }
     }
 
     /// Checks that `self` declares everything `needed` uses.
     pub fn check_covers(self, needed: Namespaces) -> Result<(), XmlError> {
-        if needed.xhtml && !self.xhtml {
-            return Err(XmlError::UndeclaredNamespace { prefix: "xhtml" });
+        match self.missing(needed).first() {
+            Some(prefix) => Err(XmlError::UndeclaredNamespace { prefix }),
+            None => Ok(()),
         }
-        if needed.image && !self.image {
-            return Err(XmlError::UndeclaredNamespace { prefix: "image" });
-        }
-        Ok(())
     }
 }
 
@@ -145,6 +173,11 @@ pub fn urlset_header(namespaces: Namespaces) -> String {
     if namespaces.image {
         header.push_str(" xmlns:image=\"");
         header.push_str(IMAGE_NS);
+        header.push('"');
+    }
+    if namespaces.video {
+        header.push_str(" xmlns:video=\"");
+        header.push_str(VIDEO_NS);
         header.push('"');
     }
     header.push_str(">\n");
@@ -226,7 +259,89 @@ pub fn encode_url(entry: &UrlEntry, out: &mut Vec<u8>) -> Result<(), XmlError> {
         element(out, "      ", "image:loc", image.loc.as_str())?;
         out.extend_from_slice(b"    </image:image>\n");
     }
+    for video in &entry.videos {
+        encode_video(video, out)?;
+    }
     out.extend_from_slice(b"  </url>\n");
+    Ok(())
+}
+
+fn yes_no(value: bool) -> &'static str {
+    if value { "yes" } else { "no" }
+}
+
+/// Writes `<video:video>` with children in the order of Google's
+/// `sitemap-video/1.1` XSD sequence.
+fn encode_video(video: &Video, out: &mut Vec<u8>) -> Result<(), XmlError> {
+    const IN: &str = "      ";
+    out.extend_from_slice(b"    <video:video>\n");
+    element(out, IN, "video:thumbnail_loc", video.thumbnail_loc.as_str())?;
+    element(out, IN, "video:title", &video.title)?;
+    element(out, IN, "video:description", &video.description)?;
+    if let Some(url) = &video.content_loc {
+        element(out, IN, "video:content_loc", url.as_str())?;
+    }
+    if let Some(url) = &video.player_loc {
+        element(out, IN, "video:player_loc", url.as_str())?;
+    }
+    if let Some(duration) = video.duration {
+        element(out, IN, "video:duration", &duration.to_string())?;
+    }
+    if let Some(date) = &video.expiration_date {
+        element(out, IN, "video:expiration_date", date.as_str())?;
+    }
+    if let Some(rating) = video.rating_xml() {
+        element(out, IN, "video:rating", &rating)?;
+    }
+    if let Some(count) = video.view_count {
+        element(out, IN, "video:view_count", &count.to_string())?;
+    }
+    if let Some(date) = &video.publication_date {
+        element(out, IN, "video:publication_date", date.as_str())?;
+    }
+    for tag in &video.tags {
+        element(out, IN, "video:tag", tag)?;
+    }
+    if let Some(value) = video.family_friendly {
+        element(out, IN, "video:family_friendly", yes_no(value))?;
+    }
+    if let Some(restriction) = &video.restriction {
+        let countries: Vec<&str> = restriction.countries.iter().map(|c| c.as_str()).collect();
+        out.extend_from_slice(IN.as_bytes());
+        out.extend_from_slice(b"<video:restriction relationship=\"");
+        out.extend_from_slice(restriction.relationship.as_str().as_bytes());
+        out.extend_from_slice(b"\">");
+        escape_into(out, &countries.join(" "))?;
+        out.extend_from_slice(b"</video:restriction>\n");
+    }
+    if let Some(value) = video.requires_subscription {
+        element(out, IN, "video:requires_subscription", yes_no(value))?;
+    }
+    if let Some(uploader) = &video.uploader {
+        out.extend_from_slice(IN.as_bytes());
+        out.extend_from_slice(b"<video:uploader");
+        if let Some(info) = &uploader.info {
+            out.extend_from_slice(b" info=\"");
+            escape_into(out, info.as_str())?;
+            out.push(b'"');
+        }
+        out.push(b'>');
+        escape_into(out, &uploader.name)?;
+        out.extend_from_slice(b"</video:uploader>\n");
+    }
+    if let Some(platform) = &video.platform {
+        let platforms: Vec<&str> = platform.platforms.iter().map(|p| p.as_str()).collect();
+        out.extend_from_slice(IN.as_bytes());
+        out.extend_from_slice(b"<video:platform relationship=\"");
+        out.extend_from_slice(platform.relationship.as_str().as_bytes());
+        out.extend_from_slice(b"\">");
+        escape_into(out, &platforms.join(" "))?;
+        out.extend_from_slice(b"</video:platform>\n");
+    }
+    if let Some(value) = video.live {
+        element(out, IN, "video:live", yes_no(value))?;
+    }
+    out.extend_from_slice(b"    </video:video>\n");
     Ok(())
 }
 
@@ -524,5 +639,39 @@ mod tests {
         }
         let expected: Vec<&str> = entries.iter().map(|e| e.loc.as_str()).collect();
         assert_eq!(locs, expected);
+    }
+}
+
+#[cfg(test)]
+mod video_tests {
+    use super::*;
+    use sitemap_model::SitemapUrl;
+
+    fn url(s: &str) -> SitemapUrl {
+        SitemapUrl::new(s).unwrap_or_else(|e| panic!("{s}: {e}"))
+    }
+
+    #[test]
+    fn video_namespace_is_declared_only_when_needed() {
+        const { assert!(!Namespaces::DEFAULT.video) };
+        let entry = UrlEntry::new(url("https://example.com/w")).with_video(Video::new(
+            url("https://example.com/t.jpg"),
+            "T",
+            "D",
+            url("https://cdn.example.com/v.mp4"),
+        ));
+        let xml =
+            String::from_utf8(urlset_to_vec(std::slice::from_ref(&entry)).unwrap_or_default())
+                .unwrap_or_default();
+        assert!(xml.contains("xmlns:video=\"http://www.google.com/schemas/sitemap-video/1.1\""));
+        assert!(
+            xml.contains("<video:content_loc>https://cdn.example.com/v.mp4</video:content_loc>")
+        );
+        assert_eq!(
+            Namespaces::DEFAULT
+                .check_covers(Namespaces::required_by(&entry))
+                .map_err(|e| e.to_string()),
+            Err(XmlError::UndeclaredNamespace { prefix: "video" }.to_string())
+        );
     }
 }

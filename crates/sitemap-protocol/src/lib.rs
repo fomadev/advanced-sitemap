@@ -15,8 +15,9 @@ mod config;
 mod reader;
 
 pub use config::{
-    ConfigDocument, IndexSetting, InvalidPolicySetting, OutputSection, PartitioningSection,
-    SourceFormat, SourceSection, StrategySetting, ValidationModeSetting, ValidationSection,
+    ConfigDocument, ExtensionSetting, IndexSetting, InvalidPolicySetting, OutputSection,
+    PartitioningSection, SourceFormat, SourceSection, StrategySetting, ValidationModeSetting,
+    ValidationSection,
 };
 pub use reader::{
     DEFAULT_MAX_DOCUMENT_BYTES, DEFAULT_MAX_LINE_BYTES, DecodeError, JsonArrayReader, JsonlReader,
@@ -28,7 +29,7 @@ use std::fmt;
 /// Supported major version of the documents.
 pub const SUPPORTED_MAJOR: u32 = 1;
 /// Highest supported minor version for [`SUPPORTED_MAJOR`].
-pub const SUPPORTED_MINOR: u32 = 0;
+pub const SUPPORTED_MINOR: u32 = 1;
 /// Version written in reports produced by this engine.
 pub const REPORT_SCHEMA_VERSION: &str = "1.0";
 
@@ -95,7 +96,8 @@ mod tests {
     #[test]
     fn schema_versions() {
         assert!(check_schema_version("1.0").is_ok());
-        assert!(check_schema_version("1.1").is_err());
+        assert!(check_schema_version("1.1").is_ok());
+        assert!(check_schema_version("1.2").is_err());
         assert!(check_schema_version("2.0").is_err());
         assert!(check_schema_version("1").is_err());
         assert!(check_schema_version("v1.0").is_err());

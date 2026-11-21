@@ -63,6 +63,30 @@ practice is not followed. `info` is informational.
 | `STALE_ARTIFACT` | info | A file from the previous manifest is no longer produced. It is not deleted |
 | `DIAGNOSTICS_TRUNCATED` | info | The list reached `maxDiagnostics`. Counts are exact |
 
+## Extensions
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `EXTENSION_NOT_DECLARED` | error | The record uses an extension (for example `videos`) whose namespace is not in `output.extensions` |
+| `VIDEO_LOCATION_MISSING` | error | Neither `contentLoc` nor `playerLoc` |
+| `VIDEO_LOCATION_SAME_AS_PAGE` | error | `contentLoc` or `playerLoc` equals the page `loc` |
+| `VIDEO_TEXT_INVALID` | error | Empty `title`, `description` or tag, or a description longer than 2,048 characters |
+| `VIDEO_TITLE_TOO_LONG` | warning | Title longer than 100 characters (refused by Google's XSD) |
+| `VIDEO_DURATION_OUT_OF_RANGE` | error | Duration not between 1 and 28,800 seconds |
+| `VIDEO_RATING_OUT_OF_RANGE` | error | Rating not between 0.0 and 5.0 |
+| `VIDEO_DATE_INVALID` | error | `expirationDate` or `publicationDate` is not a W3C Datetime |
+| `VIDEO_EXPIRED` | warning | `expirationDate` is not later than `referenceTime` |
+| `VIDEO_RESTRICTION_INVALID` | error | Relationship not `allow`/`deny`, or a country is not two letters |
+| `VIDEO_PLATFORM_INVALID` | error | Relationship not `allow`/`deny`, or a platform not `web`, `mobile` or `tv` |
+| `VIDEO_UPLOADER_INVALID` | error | Uploader name empty or longer than 255 characters |
+| `VIDEO_UPLOADER_HOST_MISMATCH` | warning | `uploader.info` is not on the host of `loc` |
+| `VIDEO_TAG_LIMIT_EXCEEDED` | error | More than 32 tags |
+| `VIDEO_VALUE_INVALID` | error | `inspect` only: a number or `yes`/`no` value cannot be read |
+
+A missing required video field is reported as `REQUIRED_FIELD_MISSING` with
+a path such as `videos[0].title`. URL problems in video fields use the
+`URL_*` codes.
+
 ## Reading existing files (`inspect`)
 
 Codes marked *stops* end reading: the file report then has

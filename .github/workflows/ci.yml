@@ -54,6 +54,12 @@ jobs:
           curl -fsSL -o /tmp/siteindex.xsd https://www.sitemaps.org/schemas/sitemap/0.9/siteindex.xsd
           xmllint --noout --schema /tmp/sitemap.xsd fixtures/conformance/basic/expected/sitemap.xml fixtures/conformance/partitioned/expected/sitemap-*.xml
           xmllint --noout --schema /tmp/siteindex.xsd fixtures/conformance/partitioned/expected/sitemap.xml
+      - name: Validate the video fixture against Google's video XSD
+        run: |
+          mkdir -p /tmp/xsd && cp tools/xsd/sitemap-with-video.xsd /tmp/xsd/
+          curl -fsSL -o /tmp/xsd/sitemap.xsd https://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd
+          curl -fsSL -o /tmp/xsd/sitemap-video.xsd https://www.google.com/schemas/sitemap-video/1.1/sitemap-video.xsd
+          xmllint --noout --schema /tmp/xsd/sitemap-with-video.xsd fixtures/conformance/video/expected/sitemap.xml
 
   supply-chain:
     runs-on: ubuntu-latest

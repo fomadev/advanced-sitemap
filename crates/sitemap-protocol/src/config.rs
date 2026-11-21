@@ -212,6 +212,18 @@ pub struct OutputSection {
     /// Write `<stem>.manifest.json`. Default `true`.
     #[serde(default = "default_true")]
     pub manifest: bool,
+    /// Extension namespaces to declare in addition to `xhtml` and `image`,
+    /// which are always declared. Since protocol 1.1.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extensions: Vec<ExtensionSetting>,
+}
+
+/// An optional sitemap extension.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExtensionSetting {
+    /// Google video extension (`xmlns:video`).
+    Video,
 }
 
 impl Default for OutputSection {
@@ -221,6 +233,7 @@ impl Default for OutputSection {
             file_stem: default_stem(),
             index: IndexSetting::default(),
             manifest: true,
+            extensions: Vec::new(),
         }
     }
 }

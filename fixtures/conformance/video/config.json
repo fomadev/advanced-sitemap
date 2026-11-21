@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "1.1",
+  "output": { "manifest": false, "extensions": ["video"] },
+  "urls": [
+    {
+      "loc": "https://example.com/videos/grilling",
+      "lastmod": "2026-03-01",
+      "videos": [
+        {
+          "thumbnailLoc": "https://example.com/thumbs/123.jpg",
+          "title": "Grilling steaks for summer",
+          "description": "Alkis shows you how to get perfectly done steaks every time & without smoke <really>.",
+          "contentLoc": "https://streamserver.example.com/video123.mp4",
+          "playerLoc": "https://www.example.com/videoplayer.php?video=123&autoplay=1",
+          "duration": 460,
+          "expirationDate": "2030-11-05T19:20:30+08:00",
+          "rating": 4.2,
+          "viewCount": 12345,
+          "publicationDate": "2026-02-28T19:20:30+08:00",
+          "tags": ["steak", "summer"],
+          "familyFriendly": true,
+          "restriction": { "relationship": "allow", "countries": ["ie", "GB", "US", "CA"] },
+          "requiresSubscription": false,
+          "uploader": { "name": "GrillyMcGrillerson", "info": "https://example.com/users/grillymcgrillerson" },
+          "platform": { "relationship": "deny", "platforms": ["tv"] },
+          "live": false
+        },
+        {
+          "thumbnailLoc": "https://example.com/thumbs/345.jpg",
+          "title": "Grilling steaks for winter",
+          "description": "In the freezing cold.",
+          "playerLoc": "https://www.example.com/videoplayer.php?video=345"
+        }
+      ]
+    },
+    { "loc": "https://example.com/about" }
+  ]
+}
