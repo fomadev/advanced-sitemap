@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Driver schema for xmllint: imports the official sitemaps.org and Google
+  video schemas so that news:news elements, which sitemap.xsd accepts
+  through xsd:any with strict processing, can be validated. CI downloads
+  the referenced files next to this one; they are not stored in the
+  repository.
+-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <xsd:import namespace="http://www.sitemaps.org/schemas/sitemap/0.9" schemaLocation="sitemap.xsd"/>
+  <xsd:import namespace="http://www.google.com/schemas/sitemap-news/0.9" schemaLocation="sitemap-news.xsd"/>
+</xsd:schema>

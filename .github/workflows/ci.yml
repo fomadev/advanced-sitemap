@@ -60,6 +60,12 @@ jobs:
           curl -fsSL -o /tmp/xsd/sitemap.xsd https://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd
           curl -fsSL -o /tmp/xsd/sitemap-video.xsd https://www.google.com/schemas/sitemap-video/1.1/sitemap-video.xsd
           xmllint --noout --schema /tmp/xsd/sitemap-with-video.xsd fixtures/conformance/video/expected/sitemap.xml
+      - name: Validate the news fixture against Google's news XSD
+        run: |
+          mkdir -p /tmp/xsd && cp tools/xsd/sitemap-with-news.xsd /tmp/xsd/
+          curl -fsSL -o /tmp/xsd/sitemap.xsd https://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd
+          curl -fsSL -o /tmp/xsd/sitemap-news.xsd https://www.google.com/schemas/sitemap-news/0.9/sitemap-news.xsd
+          xmllint --noout --schema /tmp/xsd/sitemap-with-news.xsd fixtures/conformance/news/expected/sitemap.xml
 
   supply-chain:
     runs-on: ubuntu-latest
