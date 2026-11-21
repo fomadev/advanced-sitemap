@@ -19,6 +19,7 @@ sitemap-index = { path = "crates/sitemap-index" }
 sitemap-protocol = { path = "crates/sitemap-protocol" }
 sitemap-reader = { path = "crates/sitemap-reader" }
 sitemap-robots = { path = "crates/sitemap-robots" }
+sitemap-snapshot = { path = "crates/sitemap-snapshot" }
 advanced-sitemap = { path = "crates/advanced-sitemap" }
 
 url = "2.5.9"
@@ -27,6 +28,8 @@ serde_json = "1.0.154"
 clap = { version = "4.6.9", features = ["derive"] }
 # Pure Rust backend (miniz_oxide), no C toolchain needed.
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+# Persisted digests (ADR-0011). Portable code only: no C or assembly build.
+blake3 = { version = "1.8", default-features = false, features = ["std", "pure"] }
 # Runtime dependency of sitemap-reader; never expands DTD entities.
 quick-xml = "0.42.0"
 
