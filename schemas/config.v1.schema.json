@@ -53,6 +53,11 @@
           "type": "integer",
           "minimum": 0,
           "default": 1000
+        },
+        "hreflangReciprocity": {
+          "type": "boolean",
+          "default": false,
+          "description": "Check hreflang return links and conflicting codes across entries (since 1.1)."
         }
       }
     },

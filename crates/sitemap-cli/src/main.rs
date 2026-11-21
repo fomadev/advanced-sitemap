@@ -136,6 +136,9 @@ struct CommonArgs {
     /// Keep duplicate URLs instead of dropping them.
     #[arg(long)]
     no_dedupe: bool,
+    /// Check hreflang return links across entries (about 110 bytes per link).
+    #[arg(long)]
+    hreflang_reciprocity: bool,
     /// Maximum diagnostics listed in the report.
     #[arg(long)]
     max_diagnostics: Option<u32>,
@@ -276,6 +279,9 @@ fn load(common: &CommonArgs, out: Option<&Path>) -> Result<ResolvedConfig, Failu
     }
     if common.no_dedupe {
         doc.validation.dedupe = false;
+    }
+    if common.hreflang_reciprocity {
+        doc.validation.hreflang_reciprocity = true;
     }
     if let Some(max) = common.max_diagnostics {
         doc.validation.max_diagnostics = max;
