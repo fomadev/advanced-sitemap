@@ -38,7 +38,7 @@ use quick_xml::reader::NsReader;
 use sitemap_model::limits::{MAX_SITEMAP_BYTES, MAX_SITEMAPS_PER_INDEX, MAX_URLS_PER_SITEMAP};
 use sitemap_model::{
     Diagnostic, DiagnosticCode, IndexEntry, Location, RawAlternate, RawImage, RawUrlRecord,
-    UrlEntry,
+    RawVideo, RawVideoPlatform, RawVideoRestriction, RawVideoUploader, UrlEntry,
 };
 use sitemap_validation::{ValidationMode, ValidationOptions, Validator};
 
@@ -48,6 +48,8 @@ pub const SITEMAP_NS: &str = "http://www.sitemaps.org/schemas/sitemap/0.9";
 pub const XHTML_NS: &str = "http://www.w3.org/1999/xhtml";
 /// Namespace of Google image sitemaps.
 pub const IMAGE_NS: &str = "http://www.google.com/schemas/sitemap-image/1.1";
+/// Namespace of Google video sitemaps.
+pub const VIDEO_NS: &str = "http://www.google.com/schemas/sitemap-video/1.1";
 
 /// Resource limits applied while reading.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -270,6 +272,78 @@ enum Field {
     Changefreq,
     Priority,
     ImageLoc,
+    Video(VideoField),
+}
+
+/// Children of `video:video` that are read. Tags Google removed in 2022
+/// (`category`, `gallery_loc`, `price`, `tvshow`) and `id`,
+/// `content_segment_loc` are skipped.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum VideoField {
+    ThumbnailLoc,
+    Title,
+    Description,
+    ContentLoc,
+    PlayerLoc,
+    Duration,
+    ExpirationDate,
+    Rating,
+    ViewCount,
+    PublicationDate,
+    Tag,
+    FamilyFriendly,
+    Restriction,
+    RequiresSubscription,
+    Uploader,
+    Platform,
+    Live,
+}
+
+impl VideoField {
+    fn parse(local: &str) -> Option<Self> {
+        Some(match local {
+            "thumbnail_loc" => VideoField::ThumbnailLoc,
+            "title" => VideoField::Title,
+            "description" => VideoField::Description,
+            "content_loc" => VideoField::ContentLoc,
+            "player_loc" => VideoField::PlayerLoc,
+            "duration" => VideoField::Duration,
+            "expiration_date" => VideoField::ExpirationDate,
+            "rating" => VideoField::Rating,
+            "view_count" => VideoField::ViewCount,
+            "publication_date" => VideoField::PublicationDate,
+            "tag" => VideoField::Tag,
+            "family_friendly" => VideoField::FamilyFriendly,
+            "restriction" => VideoField::Restriction,
+            "requires_subscription" => VideoField::RequiresSubscription,
+            "uploader" => VideoField::Uploader,
+            "platform" => VideoField::Platform,
+            "live" => VideoField::Live,
+            _ => return None,
+        })
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            VideoField::ThumbnailLoc => "video:thumbnail_loc",
+            VideoField::Title => "video:title",
+            VideoField::Description => "video:description",
+            VideoField::ContentLoc => "video:content_loc",
+            VideoField::PlayerLoc => "video:player_loc",
+            VideoField::Duration => "video:duration",
+            VideoField::ExpirationDate => "video:expiration_date",
+            VideoField::Rating => "video:rating",
+            VideoField::ViewCount => "video:view_count",
+            VideoField::PublicationDate => "video:publication_date",
+            VideoField::Tag => "video:tag",
+            VideoField::FamilyFriendly => "video:family_friendly",
+            VideoField::Restriction => "video:restriction",
+            VideoField::RequiresSubscription => "video:requires_subscription",
+            VideoField::Uploader => "video:uploader",
+            VideoField::Platform => "video:platform",
+            VideoField::Live => "video:live",
+        }
+    }
 }
 
 impl Field {
@@ -290,6 +364,7 @@ impl Field {
             Field::Changefreq => "changefreq",
             Field::Priority => "priority",
             Field::ImageLoc => "image:loc",
+            Field::Video(field) => field.name(),
         }
     }
 }
@@ -304,6 +379,12 @@ struct EntryBuilder {
     order_reported: bool,
     /// Inside `<image:image>`: the `image:loc` text, once read.
     image: Option<Option<String>>,
+    /// Inside `<video:video>`.
+    video: Option<RawVideo>,
+    /// `relationship` or `info` attribute of the video field being read.
+    video_attribute: Option<String>,
+    /// A value could not be read (reported by the reader, not the validator).
+    read_error: bool,
 }
 
 /// Why reading stopped.
@@ -560,7 +641,7 @@ impl<'o, F: FnMut(Item)> State<'o, F> {
                 Ok(())
             }
             _ => {
-                self.open_nested(ns, &local);
+                self.open_nested(ns, &local, start);
                 Ok(())
             }
         }
@@ -720,6 +801,9 @@ impl<'o, F: FnMut(Item)> State<'o, F> {
             (DocumentKind::Urlset, IMAGE_NS, "image") => {
                 entry.image = Some(None);
             }
+            (DocumentKind::Urlset, VIDEO_NS, "video") => {
+                entry.video = Some(RawVideo::default());
+            }
             _ => {
                 self.count_extension(ns);
                 self.skip = Some(depth);
@@ -727,8 +811,27 @@ impl<'o, F: FnMut(Item)> State<'o, F> {
         }
     }
 
-    fn open_nested(&mut self, ns: &str, local: &str) {
+    fn open_nested(&mut self, ns: &str, local: &str, start: &BytesStart<'_>) {
         let depth = self.depth;
+        let in_video = self.entry.as_ref().is_some_and(|e| e.video.is_some());
+        if depth == 4 && in_video && self.field.is_none() && ns == VIDEO_NS {
+            if let Some(field) = VideoField::parse(local) {
+                let attribute = match field {
+                    VideoField::Restriction | VideoField::Platform => "relationship",
+                    VideoField::Uploader => "info",
+                    _ => "",
+                };
+                let value = (!attribute.is_empty())
+                    .then(|| attribute_value(start, attribute))
+                    .flatten();
+                if let Some(entry) = self.entry.as_mut() {
+                    entry.video_attribute = value;
+                }
+                self.field = Some((Field::Video(field), depth));
+                self.text.clear();
+                return;
+            }
+        }
         let in_image = self.entry.as_ref().is_some_and(|e| e.image.is_some());
         if depth == 4 && in_image && self.field.is_none() && ns == IMAGE_NS && local == "loc" {
             self.field = Some((Field::ImageLoc, depth));
@@ -776,6 +879,13 @@ impl<'o, F: FnMut(Item)> State<'o, F> {
                     }
                 }
             }
+            3 if ns == VIDEO_NS && local == "video" => {
+                if let Some(entry) = self.entry.as_mut() {
+                    if let Some(video) = entry.video.take() {
+                        entry.raw.videos.push(video);
+                    }
+                }
+            }
             _ => {}
         }
         Ok(())
@@ -805,6 +915,23 @@ impl<'o, F: FnMut(Item)> State<'o, F> {
                     *image = Some(value.to_owned());
                 }
             }
+            Field::Video(video_field) => {
+                let attribute = entry.video_attribute.take();
+                let record = self.report.entries;
+                if let Some(video) = entry.video.as_mut() {
+                    if let Some(diagnostic) = set_video_field(video, video_field, value, attribute)
+                    {
+                        entry.read_error = true;
+                        let index = entry.raw.videos.len();
+                        let location = Location::record(record, None)
+                            .with_field(format!("videos[{index}].{}", video_field.name()));
+                        self.report.diagnostics.push(Diagnostic {
+                            location,
+                            ..diagnostic
+                        });
+                    }
+                }
+            }
             Field::Priority => match value.parse::<f64>() {
                 Ok(number) if number.is_finite() => entry.raw.priority = Some(number),
                 _ => {
@@ -817,6 +944,7 @@ impl<'o, F: FnMut(Item)> State<'o, F> {
                     .with_suggestion("Use a decimal number between 0.0 and 1.0.");
                     self.report.diagnostics.push(diagnostic);
                     entry.raw.priority = None;
+                    entry.read_error = true;
                 }
             },
         }
@@ -828,14 +956,12 @@ impl<'o, F: FnMut(Item)> State<'o, F> {
             return;
         };
         let location = Location::record(self.report.entries, None);
-        let had_priority_error = self.report.diagnostics.last().is_some_and(|d| {
-            d.code == DiagnosticCode::PriorityInvalid && d.location.record == location.record
-        });
+        let read_error = entry.read_error;
         let item = match self.kind() {
             DocumentKind::Urlset => self
                 .validator
                 .validate(&entry.raw, &location, &mut self.report.diagnostics)
-                .filter(|_| !had_priority_error)
+                .filter(|_| !read_error)
                 .map(Item::Url),
             DocumentKind::SitemapIndex => {
                 let raw = RawUrlRecord {
@@ -904,4 +1030,97 @@ fn fingerprint(text: &str) -> u128 {
     1u8.hash(&mut b);
     text.hash(&mut b);
     (u128::from(a.finish()) << 64) | u128::from(b.finish())
+}
+
+fn attribute_value(start: &BytesStart<'_>, name: &str) -> Option<String> {
+    start
+        .attributes()
+        .flatten()
+        .find(|a| a.key.local_name().as_ref() == name)
+        .and_then(|a| a.normalized_value(XmlVersion::Implicit1_0).ok())
+        .map(|v| v.into_owned())
+}
+
+/// `yes`/`no` in any case, as allowed by Google's XSD.
+fn parse_yes_no(value: &str) -> Option<bool> {
+    if value.eq_ignore_ascii_case("yes") {
+        Some(true)
+    } else if value.eq_ignore_ascii_case("no") {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+/// Stores one `video:*` value. Returns a diagnostic (without location) when
+/// the text cannot be read; values are checked later by the validator.
+fn set_video_field(
+    video: &mut RawVideo,
+    field: VideoField,
+    value: &str,
+    attribute: Option<String>,
+) -> Option<Diagnostic> {
+    let invalid = |expected: &str| {
+        Some(
+            Diagnostic::new(
+                DiagnosticCode::VideoValueInvalid,
+                format!("{} is not {expected}", field.name()),
+                Location::default(),
+            )
+            .with_value(value),
+        )
+    };
+    let text = Some(value.to_owned());
+    let list = || value.split_ascii_whitespace().map(str::to_owned).collect();
+    match field {
+        VideoField::ThumbnailLoc => video.thumbnail_loc = text,
+        VideoField::Title => video.title = text,
+        VideoField::Description => video.description = text,
+        VideoField::ContentLoc => video.content_loc = text,
+        VideoField::PlayerLoc => video.player_loc = text,
+        VideoField::ExpirationDate => video.expiration_date = text,
+        VideoField::PublicationDate => video.publication_date = text,
+        VideoField::Tag => video.tags.push(value.to_owned()),
+        VideoField::Duration => match value.parse::<i64>() {
+            Ok(seconds) => video.duration = Some(seconds),
+            Err(_) => return invalid("an integer number of seconds"),
+        },
+        VideoField::Rating => match value.parse::<f64>() {
+            Ok(rating) if rating.is_finite() => video.rating = Some(rating),
+            _ => return invalid("a number"),
+        },
+        VideoField::ViewCount => match value.parse::<u64>() {
+            Ok(count) => video.view_count = Some(count),
+            Err(_) => return invalid("a non-negative integer"),
+        },
+        VideoField::FamilyFriendly | VideoField::RequiresSubscription | VideoField::Live => {
+            let Some(flag) = parse_yes_no(value) else {
+                return invalid("yes or no");
+            };
+            match field {
+                VideoField::FamilyFriendly => video.family_friendly = Some(flag),
+                VideoField::RequiresSubscription => video.requires_subscription = Some(flag),
+                _ => video.live = Some(flag),
+            }
+        }
+        VideoField::Restriction => {
+            video.restriction = Some(RawVideoRestriction {
+                relationship: attribute,
+                countries: list(),
+            });
+        }
+        VideoField::Platform => {
+            video.platform = Some(RawVideoPlatform {
+                relationship: attribute,
+                platforms: list(),
+            });
+        }
+        VideoField::Uploader => {
+            video.uploader = Some(RawVideoUploader {
+                name: text,
+                info: attribute,
+            });
+        }
+    }
+    None
 }
