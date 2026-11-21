@@ -145,6 +145,36 @@ diagnostic_codes! {
     GzipInvalid => "GZIP_INVALID", Error;
     /// `priority` text in an inspected document is not a number.
     PriorityInvalid => "PRIORITY_INVALID", Error;
+    /// An entry uses an extension whose namespace is not declared in `output.extensions`.
+    ExtensionNotDeclared => "EXTENSION_NOT_DECLARED", Error;
+    /// A video has neither `contentLoc` nor `playerLoc`.
+    VideoLocationMissing => "VIDEO_LOCATION_MISSING", Error;
+    /// A video `contentLoc` or `playerLoc` equals the page `loc`.
+    VideoLocationSameAsPage => "VIDEO_LOCATION_SAME_AS_PAGE", Error;
+    /// A video title or description is empty, or the description is longer than 2,048 characters.
+    VideoTextInvalid => "VIDEO_TEXT_INVALID", Error;
+    /// A video title is longer than 100 characters (refused by Google's XSD).
+    VideoTitleTooLong => "VIDEO_TITLE_TOO_LONG", Warning;
+    /// A video duration is not between 1 and 28,800 seconds.
+    VideoDurationOutOfRange => "VIDEO_DURATION_OUT_OF_RANGE", Error;
+    /// A video rating is not between 0.0 and 5.0.
+    VideoRatingOutOfRange => "VIDEO_RATING_OUT_OF_RANGE", Error;
+    /// A video expiration or publication date is not a W3C Datetime.
+    VideoDateInvalid => "VIDEO_DATE_INVALID", Error;
+    /// A video expiration date is not later than the reference time.
+    VideoExpired => "VIDEO_EXPIRED", Warning;
+    /// A video restriction has an invalid relationship or country code.
+    VideoRestrictionInvalid => "VIDEO_RESTRICTION_INVALID", Error;
+    /// A video platform has an invalid relationship or platform value.
+    VideoPlatformInvalid => "VIDEO_PLATFORM_INVALID", Error;
+    /// A video uploader is empty or longer than 255 characters.
+    VideoUploaderInvalid => "VIDEO_UPLOADER_INVALID", Error;
+    /// A video uploader `info` page is not on the same host as the page `loc`.
+    VideoUploaderHostMismatch => "VIDEO_UPLOADER_HOST_MISMATCH", Warning;
+    /// More than 32 tags on one video.
+    VideoTagLimitExceeded => "VIDEO_TAG_LIMIT_EXCEEDED", Error;
+    /// A video value in an inspected document cannot be read (not a number, not yes/no).
+    VideoValueInvalid => "VIDEO_VALUE_INVALID", Error;
 }
 
 impl fmt::Display for DiagnosticCode {

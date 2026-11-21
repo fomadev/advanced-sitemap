@@ -111,6 +111,11 @@ impl SitemapUrl {
         self.url.fragment().is_some()
     }
 
+    /// The host (ASCII, lowercase), when the URL has one.
+    pub fn host(&self) -> Option<&str> {
+        self.url.host_str()
+    }
+
     /// The ASCII serialization of the origin (`scheme://host[:port]`).
     pub fn origin(&self) -> String {
         self.url.origin().ascii_serialization()

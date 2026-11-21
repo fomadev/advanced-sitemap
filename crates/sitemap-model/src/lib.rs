@@ -20,11 +20,18 @@ pub mod limits;
 mod raw;
 mod scalar;
 mod sitemap_url;
+mod video;
 
 pub use datetime::{DateTimeError, DateTimePrecision, W3cDateTime};
 pub use diagnostic::{Diagnostic, DiagnosticCode, Location, Severity};
 pub use entry::{Alternate, Image, IndexEntry, UrlEntry};
 pub use hreflang::{LanguageTag, LanguageTagError};
-pub use raw::{RawAlternate, RawImage, RawUrlRecord};
+pub use raw::{
+    RawAlternate, RawImage, RawUrlRecord, RawVideo, RawVideoPlatform, RawVideoRestriction,
+    RawVideoUploader,
+};
 pub use scalar::{ChangeFreq, ChangeFreqError, Priority, PriorityError};
 pub use sitemap_url::{SitemapUrl, UrlError};
+pub use video::{
+    CountryCode, Platform, Relationship, Video, VideoPlatform, VideoRestriction, VideoUploader,
+};
