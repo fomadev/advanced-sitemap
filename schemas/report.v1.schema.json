@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/fomadev/advanced-sitemap/schemas/report.v1.schema.json",
+  "title": "Advanced Sitemap run report, protocol 1.0",
+  "type": "object",
+  "required": ["schemaVersion", "engineVersion", "status", "stats", "artifacts", "store", "severityCounts", "diagnosticCounts", "diagnostics"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "engineVersion": { "type": "string" },
+    "status": { "enum": ["published", "failed", "valid", "invalid"] },
+    "stats": {
+      "type": "object",
+      "required": ["records", "validRecords", "invalidRecords", "duplicates", "urlsWritten"],
+      "properties": {
+        "records": { "type": "integer" },
+        "validRecords": { "type": "integer" },
+        "invalidRecords": { "type": "integer" },
+        "duplicates": { "type": "integer" },
+        "urlsWritten": { "type": "integer" }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "kind", "bytes"],
+        "properties": {
+          "name": { "type": "string" },
+          "kind": { "enum": ["sitemap", "index", "manifest"] },
+          "entries": { "type": "integer" },
+          "bytes": { "type": "integer" }
+        }
+      }
+    },
+    "store": {
+      "type": "object",
+      "required": ["kind", "location", "atomicPerArtifact", "atomicSet"],
+      "properties": {
+        "kind": { "enum": ["local-fs", "memory", "null"] },
+        "location": { "type": "string" },
+        "atomicPerArtifact": { "type": "boolean" },
+        "atomicSet": { "type": "boolean" }
+      }
+    },
+    "severityCounts": {
+      "type": "object",
+      "required": ["error", "warning", "recommendation", "info"],
+      "additionalProperties": { "type": "integer" }
+    },
+    "diagnosticCounts": { "type": "object", "additionalProperties": { "type": "integer" } },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "severity", "message", "location"],
+        "properties": {
+          "code": { "type": "string", "pattern": "^[A-Z_]+$" },
+          "severity": { "enum": ["error", "warning", "recommendation", "info"] },
+          "message": { "type": "string" },
+          "location": {
+            "type": "object",
+            "properties": {
+              "record": { "type": "integer" },
+              "line": { "type": "integer" },
+              "field": { "type": "string" },
+              "artifact": { "type": "string" }
+            }
+          },
+          "value": { "type": "string" },
+          "suggestion": { "type": "string" }
+        }
+      }
+    }
+  }
+}

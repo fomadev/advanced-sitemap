@@ -1,0 +1,17 @@
+[package]
+name = "sitemap-protocol"
+description = "Versioned, language-independent JSON contracts and bounded JSON/JSONL readers for Advanced Sitemap."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+sitemap-model = { workspace = true, features = ["serde"] }
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
