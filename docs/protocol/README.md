@@ -47,6 +47,42 @@ JSON Schemas (draft 2020-12) are in [`schemas/`](../../schemas).
 | `output.manifest` | `true` | Write `<stem>.manifest.json` |
 | `output.extensions` | `[]` | Since 1.1. Extra namespaces declared on every file: `video`, `news`. `xhtml` and `image` are always declared. A record using an undeclared extension gets `EXTENSION_NOT_DECLARED` |
 | `source` / `urls` | none | A file, or inline records. The two are mutually exclusive |
+| `robots` | none | Since 1.1. Publishes `robots.txt` next to the sitemaps (see below) |
+
+### robots.txt (since 1.1)
+
+```json
+"robots": {
+  "groups": [
+    { "userAgents": ["Googlebot", "Bingbot"], "disallow": ["/private/"], "allow": ["/private/press-kit.html"] },
+    { "userAgents": ["*"], "disallow": ["/admin/"] }
+  ],
+  "sitemaps": ["https://example.com/news-sitemap.xml"]
+}
+```
+
+The engine writes `robots.txt` (RFC 9309) into the output directory and
+publishes it with the sitemaps:
+
+- Groups are written in order: `User-agent` lines, then `Disallow`, then
+  `Allow`, each in input order. A blank line separates groups. An empty
+  path (`""`) is written as `Disallow:` and allows everything.
+- The generated sitemap (the index, or the single sitemap file) is added as
+  a `Sitemap` record when `publicBaseUrl` is set. Otherwise
+  `ROBOTS_SITEMAP_NOT_LISTED` is reported. URLs in `sitemaps` must be
+  absolute; duplicates are removed.
+- Paths must be empty or start with `/` or `*`. Non-ASCII characters are
+  percent-encoded (UTF-8). `*` and `$` keep their RFC 9309 meaning.
+- User agents follow the RFC 9309 product token (letters, `-`, `_`) or
+  `*`. Other characters such as digits get a warning, spaces or `:` an
+  error. A user agent repeated in two groups gets a warning (crawlers
+  merge the groups).
+- Errors in `robots` are configuration errors (exit code 2): nothing is
+  generated. A file above 500 KiB gets `ROBOTS_TOO_LARGE`.
+- `robots.txt` is only useful at the root of the host. If the output
+  directory is not served at `/`, copy the file there.
+- No timestamp is written, so the file is reproducible. `Crawl-delay` and
+  `Host` are not supported: they are not part of RFC 9309.
 
 ## URL record
 

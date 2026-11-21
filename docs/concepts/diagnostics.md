@@ -93,6 +93,20 @@ A missing required video or news field is reported as
 `news.publication.language`. URL problems in video fields use the
 `URL_*` codes.
 
+## robots.txt
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `ROBOTS_GROUP_INVALID` | error | A group has no user agent |
+| `ROBOTS_USER_AGENT_INVALID` | error | Empty user agent, or one with whitespace, a control character, `:` or `#` |
+| `ROBOTS_USER_AGENT_NONSTANDARD` | warning | Characters outside the RFC 9309 product token (letters, `-`, `_`) |
+| `ROBOTS_PATH_INVALID` | error | Path not empty and not starting with `/` or `*`, or with whitespace, a control character or `#` |
+| `ROBOTS_DUPLICATE_USER_AGENT` | warning | The same user agent in several groups |
+| `ROBOTS_TOO_LARGE` | warning | The file is larger than 500 KiB |
+| `ROBOTS_SITEMAP_NOT_LISTED` | warning | `publicBaseUrl` is not set, so the generated sitemap is not listed |
+
+An invalid URL in `robots.sitemaps` is reported as `URL_INVALID`.
+
 ## Reading existing files (`inspect`)
 
 Codes marked *stops* end reading: the file report then has
