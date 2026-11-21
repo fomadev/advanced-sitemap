@@ -6,20 +6,51 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "loc": { "type": "string", "description": "Absolute http(s) URL, shorter than 2048 characters, no whitespace." },
-    "url": { "type": "string", "description": "Alias of loc (migration from next-advanced-sitemap). Do not combine with loc." },
-    "lastmod": { "type": "string", "description": "W3C Datetime: YYYY, YYYY-MM, YYYY-MM-DD, or a date-time with a time zone." },
-    "changefreq": { "enum": ["always", "hourly", "daily", "weekly", "monthly", "yearly", "never"] },
-    "priority": { "type": "number", "minimum": 0, "maximum": 1 },
+    "loc": {
+      "type": "string",
+      "description": "Absolute http(s) URL, shorter than 2048 characters, no whitespace."
+    },
+    "url": {
+      "type": "string",
+      "description": "Alias of loc (migration from next-advanced-sitemap). Do not combine with loc."
+    },
+    "lastmod": {
+      "type": "string",
+      "description": "W3C Datetime: YYYY, YYYY-MM, YYYY-MM-DD, or a date-time with a time zone."
+    },
+    "changefreq": {
+      "enum": [
+        "always",
+        "hourly",
+        "daily",
+        "weekly",
+        "monthly",
+        "yearly",
+        "never"
+      ]
+    },
+    "priority": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
     "alternates": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["hreflang", "href"],
+        "required": [
+          "hreflang",
+          "href"
+        ],
         "properties": {
-          "hreflang": { "type": "string", "description": "x-default or lang[-Script][-REGION]." },
-          "href": { "type": "string" }
+          "hreflang": {
+            "type": "string",
+            "description": "x-default or lang[-Script][-REGION]."
+          },
+          "href": {
+            "type": "string"
+          }
         }
       }
     },
@@ -29,8 +60,14 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["loc"],
-        "properties": { "loc": { "type": "string" } }
+        "required": [
+          "loc"
+        ],
+        "properties": {
+          "loc": {
+            "type": "string"
+          }
+        }
       }
     },
     "videos": {
@@ -39,56 +76,211 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["thumbnailLoc", "title", "description"],
-        "anyOf": [ { "required": ["contentLoc"] }, { "required": ["playerLoc"] } ],
+        "required": [
+          "thumbnailLoc",
+          "title",
+          "description"
+        ],
+        "anyOf": [
+          {
+            "required": [
+              "contentLoc"
+            ]
+          },
+          {
+            "required": [
+              "playerLoc"
+            ]
+          }
+        ],
         "properties": {
-          "thumbnailLoc": { "type": "string" },
-          "title": { "type": "string", "minLength": 1, "description": "Google's XSD allows 100 characters; longer titles get a warning." },
-          "description": { "type": "string", "minLength": 1, "maxLength": 2048 },
-          "contentLoc": { "type": "string", "description": "Media file URL; must differ from loc." },
-          "playerLoc": { "type": "string", "description": "Player URL; must differ from loc." },
-          "duration": { "type": "integer", "minimum": 1, "maximum": 28800 },
-          "expirationDate": { "type": "string", "description": "W3C Datetime." },
-          "rating": { "type": "number", "minimum": 0, "maximum": 5 },
-          "viewCount": { "type": "integer", "minimum": 0 },
-          "publicationDate": { "type": "string", "description": "W3C Datetime." },
-          "tags": { "type": "array", "maxItems": 32, "items": { "type": "string", "minLength": 1 } },
-          "familyFriendly": { "type": "boolean" },
+          "thumbnailLoc": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Google's XSD allows 100 characters; longer titles get a warning."
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "contentLoc": {
+            "type": "string",
+            "description": "Media file URL; must differ from loc."
+          },
+          "playerLoc": {
+            "type": "string",
+            "description": "Player URL; must differ from loc."
+          },
+          "duration": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 28800
+          },
+          "expirationDate": {
+            "type": "string",
+            "description": "W3C Datetime."
+          },
+          "rating": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 5
+          },
+          "viewCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "publicationDate": {
+            "type": "string",
+            "description": "W3C Datetime."
+          },
+          "tags": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "familyFriendly": {
+            "type": "boolean"
+          },
           "restriction": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["relationship"],
+            "required": [
+              "relationship"
+            ],
             "properties": {
-              "relationship": { "enum": ["allow", "deny"] },
-              "countries": { "type": "array", "items": { "type": "string", "pattern": "^[A-Za-z]{2}$" } }
+              "relationship": {
+                "enum": [
+                  "allow",
+                  "deny"
+                ]
+              },
+              "countries": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z]{2}$"
+                }
+              }
             }
           },
-          "requiresSubscription": { "type": "boolean" },
+          "requiresSubscription": {
+            "type": "boolean"
+          },
           "uploader": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["name"],
+            "required": [
+              "name"
+            ],
             "properties": {
-              "name": { "type": "string", "minLength": 1, "maxLength": 255 },
-              "info": { "type": "string", "description": "Page about the uploader, on the same host as loc." }
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255
+              },
+              "info": {
+                "type": "string",
+                "description": "Page about the uploader, on the same host as loc."
+              }
             }
           },
           "platform": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["relationship"],
+            "required": [
+              "relationship"
+            ],
             "properties": {
-              "relationship": { "enum": ["allow", "deny"] },
-              "platforms": { "type": "array", "items": { "enum": ["web", "mobile", "tv"] } }
+              "relationship": {
+                "enum": [
+                  "allow",
+                  "deny"
+                ]
+              },
+              "platforms": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "web",
+                    "mobile",
+                    "tv"
+                  ]
+                }
+              }
             }
           },
-          "live": { "type": "boolean" }
+          "live": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "news": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Google News extension (since 1.1). Requires \"news\" in output.extensions.",
+      "required": [
+        "publication",
+        "publicationDate",
+        "title"
+      ],
+      "properties": {
+        "publication": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "language"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "language": {
+              "type": "string",
+              "pattern": "^([A-Za-z]{2,3}|[Zz][Hh]-([Cc][Nn]|[Tt][Ww]))$"
+            }
+          }
+        },
+        "publicationDate": {
+          "type": "string",
+          "description": "W3C Datetime of first publication."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
         }
       }
     }
   },
   "oneOf": [
-    { "required": ["loc"], "not": { "required": ["url"] } },
-    { "required": ["url"], "not": { "required": ["loc"] } }
+    {
+      "required": [
+        "loc"
+      ],
+      "not": {
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "required": [
+        "url"
+      ],
+      "not": {
+        "required": [
+          "loc"
+        ]
+      }
+    }
   ]
 }

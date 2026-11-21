@@ -4,44 +4,122 @@
   "title": "Advanced Sitemap configuration document, protocol 1.0",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion"],
+  "required": [
+    "schemaVersion"
+  ],
   "properties": {
-    "schemaVersion": { "enum": ["1.0", "1.1"], "description": "1.1 adds output.extensions." },
-    "site": { "type": "string", "description": "Expected origin of page URLs." },
-    "publicBaseUrl": { "type": "string", "description": "Public URL of the output directory; required when an index is written." },
-    "referenceTime": { "type": "string", "description": "W3C Datetime used by time-dependent rules." },
+    "schemaVersion": {
+      "enum": [
+        "1.0",
+        "1.1"
+      ],
+      "description": "1.1 adds output.extensions."
+    },
+    "site": {
+      "type": "string",
+      "description": "Expected origin of page URLs."
+    },
+    "publicBaseUrl": {
+      "type": "string",
+      "description": "Public URL of the output directory; required when an index is written."
+    },
+    "referenceTime": {
+      "type": "string",
+      "description": "W3C Datetime used by time-dependent rules."
+    },
     "validation": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "mode": { "enum": ["standard", "strict"], "default": "standard" },
-        "onInvalid": { "enum": ["fail", "skip"], "default": "fail" },
-        "dedupe": { "type": "boolean", "default": true },
-        "maxDiagnostics": { "type": "integer", "minimum": 0, "default": 1000 }
+        "mode": {
+          "enum": [
+            "standard",
+            "strict"
+          ],
+          "default": "standard"
+        },
+        "onInvalid": {
+          "enum": [
+            "fail",
+            "skip"
+          ],
+          "default": "fail"
+        },
+        "dedupe": {
+          "type": "boolean",
+          "default": true
+        },
+        "maxDiagnostics": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 1000
+        }
       }
     },
     "partitioning": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "strategy": { "enum": ["sequential", "stable-hash"], "default": "sequential" },
-        "partitions": { "type": "integer", "minimum": 1, "description": "Required by stable-hash, refused by sequential." },
-        "maxUrls": { "type": "integer", "minimum": 1, "maximum": 50000, "default": 50000 },
-        "maxBytes": { "type": "integer", "minimum": 4096, "maximum": 52428800, "default": 52428800 }
+        "strategy": {
+          "enum": [
+            "sequential",
+            "stable-hash"
+          ],
+          "default": "sequential"
+        },
+        "partitions": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Required by stable-hash, refused by sequential."
+        },
+        "maxUrls": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50000,
+          "default": 50000
+        },
+        "maxBytes": {
+          "type": "integer",
+          "minimum": 4096,
+          "maximum": 52428800,
+          "default": 52428800
+        }
       }
     },
     "output": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "directory": { "type": "string", "description": "Relative to the configuration file." },
-        "fileStem": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$", "default": "sitemap" },
-        "index": { "enum": ["auto", "always", "never"], "default": "auto" },
-        "manifest": { "type": "boolean", "default": true },
+        "directory": {
+          "type": "string",
+          "description": "Relative to the configuration file."
+        },
+        "fileStem": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+          "default": "sitemap"
+        },
+        "index": {
+          "enum": [
+            "auto",
+            "always",
+            "never"
+          ],
+          "default": "auto"
+        },
+        "manifest": {
+          "type": "boolean",
+          "default": true
+        },
         "extensions": {
           "type": "array",
           "description": "Extension namespaces declared on every file, in addition to xhtml and image (since 1.1).",
-          "items": { "enum": ["video"] },
+          "items": {
+            "enum": [
+              "video",
+              "news"
+            ]
+          },
           "uniqueItems": true
         }
       }
@@ -49,18 +127,39 @@
     "source": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path"],
+      "required": [
+        "path"
+      ],
       "properties": {
-        "format": { "enum": ["json", "jsonl"], "description": "Inferred from .json, .jsonl or .ndjson when absent." },
-        "path": { "type": "string" },
-        "maxLineBytes": { "type": "integer", "minimum": 1, "default": 1048576 }
+        "format": {
+          "enum": [
+            "json",
+            "jsonl"
+          ],
+          "description": "Inferred from .json, .jsonl or .ndjson when absent."
+        },
+        "path": {
+          "type": "string"
+        },
+        "maxLineBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1048576
+        }
       }
     },
     "urls": {
       "type": "array",
       "description": "Inline records; each item is validated individually (see url-record.v1.schema.json).",
-      "items": { "$ref": "url-record.v1.schema.json" }
+      "items": {
+        "$ref": "url-record.v1.schema.json"
+      }
     }
   },
-  "not": { "required": ["urls", "source"] }
+  "not": {
+    "required": [
+      "urls",
+      "source"
+    ]
+  }
 }
