@@ -38,6 +38,9 @@ pub struct ConfigDocument {
     /// individually and a bad record becomes a diagnostic.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub urls: Option<Vec<serde_json::Value>>,
+    /// robots.txt to publish with the sitemaps (since 1.1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub robots: Option<sitemap_robots::RobotsConfig>,
 }
 
 impl ConfigDocument {
@@ -53,6 +56,7 @@ impl ConfigDocument {
             output: OutputSection::default(),
             source: None,
             urls: None,
+            robots: None,
         }
     }
 

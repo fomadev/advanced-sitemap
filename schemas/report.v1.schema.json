@@ -26,7 +26,7 @@
         "required": ["name", "kind", "bytes"],
         "properties": {
           "name": { "type": "string" },
-          "kind": { "enum": ["sitemap", "index", "manifest"] },
+          "kind": { "enum": ["sitemap", "index", "manifest", "robots"] },
           "entries": { "type": "integer" },
           "bytes": { "type": "integer" }
         }
