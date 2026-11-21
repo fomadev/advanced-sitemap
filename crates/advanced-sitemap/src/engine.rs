@@ -378,7 +378,7 @@ impl Engine {
                         writing = false;
                     }
                 }
-                Err(error @ PushError::PartitionFull { .. }) => {
+                Err(error @ (PushError::PartitionFull { .. } | PushError::NewsLimit { .. })) => {
                     collector.push(
                         Diagnostic::new(
                             DiagnosticCode::PartitionLimitExceeded,

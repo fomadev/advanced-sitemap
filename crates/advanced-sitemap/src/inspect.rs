@@ -41,6 +41,12 @@ pub struct FileInspection {
     pub with_alternates: u64,
     /// Valid entries with images.
     pub with_images: u64,
+    /// Valid entries with videos.
+    pub with_videos: u64,
+    /// Valid entries with news metadata.
+    pub with_news: u64,
+    /// `<news:news>` elements found.
+    pub news_elements: u64,
     /// Skipped elements of namespaces that are not validated, by namespace.
     pub unsupported_extensions: BTreeMap<String, u64>,
     /// Counts by severity.
@@ -73,6 +79,9 @@ impl FileInspection {
             with_lastmod: report.with_lastmod,
             with_alternates: report.with_alternates,
             with_images: report.with_images,
+            with_videos: report.with_videos,
+            with_news: report.with_news,
+            news_elements: report.news_elements,
             unsupported_extensions: report.unsupported_extensions,
             severity_counts: counts,
             diagnostics: report.diagnostics,
