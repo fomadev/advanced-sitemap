@@ -185,6 +185,20 @@ diagnostic_codes! {
     NewsTooOld => "NEWS_TOO_OLD", Warning;
     /// A sitemap file contains more than 1,000 `<news:news>` elements.
     NewsLimitExceeded => "NEWS_LIMIT_EXCEEDED", Error;
+    /// A robots.txt group has no user agent.
+    RobotsGroupInvalid => "ROBOTS_GROUP_INVALID", Error;
+    /// A robots.txt user agent is empty or contains whitespace, a control character, `:` or `#`.
+    RobotsUserAgentInvalid => "ROBOTS_USER_AGENT_INVALID", Error;
+    /// A robots.txt user agent uses characters outside the RFC 9309 product token (letters, `-`, `_`).
+    RobotsUserAgentNonstandard => "ROBOTS_USER_AGENT_NONSTANDARD", Warning;
+    /// A robots.txt path does not start with `/` or `*`, or contains whitespace, a control character or `#`.
+    RobotsPathInvalid => "ROBOTS_PATH_INVALID", Error;
+    /// The same user agent appears in several robots.txt groups (crawlers merge them).
+    RobotsDuplicateUserAgent => "ROBOTS_DUPLICATE_USER_AGENT", Warning;
+    /// robots.txt is larger than 500 KiB; crawlers may ignore the rest (RFC 9309).
+    RobotsTooLarge => "ROBOTS_TOO_LARGE", Warning;
+    /// robots.txt does not list the generated sitemap because `publicBaseUrl` is not set.
+    RobotsSitemapNotListed => "ROBOTS_SITEMAP_NOT_LISTED", Warning;
 }
 
 impl fmt::Display for DiagnosticCode {

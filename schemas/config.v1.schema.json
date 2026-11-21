@@ -154,6 +154,52 @@
       "items": {
         "$ref": "url-record.v1.schema.json"
       }
+    },
+    "robots": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "robots.txt published with the sitemaps (since 1.1).",
+      "properties": {
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "userAgents"
+            ],
+            "properties": {
+              "userAgents": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "disallow": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "allow": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "sitemaps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Absolute URLs added as Sitemap records."
+        }
+      }
     }
   },
   "not": {

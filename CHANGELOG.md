@@ -8,6 +8,11 @@ contain breaking changes.
 
 ### Added
 
+- `sitemap-robots` crate and the `robots` configuration section: validated,
+  deterministic robots.txt (RFC 9309) published with the sitemaps, listing
+  the generated sitemap or index, with 7 new diagnostic codes
+  (`ROBOTS_*`) and a `robots` conformance fixture.
+
 - Google News extension: `news` in URL records (`output.extensions:
   ["news"]`), 5 new diagnostic codes (`NEWS_*`), XML in the order of
   Google's `sitemap-news/0.9` XSD, reading by `inspect`, and the 1,000
@@ -39,6 +44,8 @@ contain breaking changes.
 - `UrlEntry` gains `news`, `Namespaces` gains `news`, `PushError` gains
   `NewsLimit`, and `InspectReport` gains `with_videos`, `with_news` and
   `news_elements`.
+- `ArtifactKind` gains `Robots`; `EngineConfig` and `ConfigDocument` gain
+  `robots`.
 - `quick-xml` is now a runtime dependency (of `sitemap-reader`); `flate2`
   (pure Rust backend) is added. See ADR-0009.
 

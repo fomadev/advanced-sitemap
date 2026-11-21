@@ -20,6 +20,7 @@ dependencies = [
  "sitemap-model",
  "sitemap-protocol",
  "sitemap-reader",
+ "sitemap-robots",
  "sitemap-storage",
  "sitemap-validation",
  "sitemap-xml",
@@ -659,6 +660,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sitemap-model",
+ "sitemap-robots",
 ]
 
 [[package]]
@@ -669,6 +671,14 @@ dependencies = [
  "quick-xml",
  "sitemap-model",
  "sitemap-validation",
+]
+
+[[package]]
+name = "sitemap-robots"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "sitemap-model",
 ]
 
 [[package]]

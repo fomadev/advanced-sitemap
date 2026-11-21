@@ -51,6 +51,7 @@ impl Manifest {
                         ArtifactKind::Sitemap => "sitemap",
                         ArtifactKind::Index => "index",
                         ArtifactKind::Manifest => "manifest",
+                        ArtifactKind::Robots => "robots",
                     }
                     .to_owned(),
                     entries: a.entries,

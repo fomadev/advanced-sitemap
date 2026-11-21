@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "1.1",
+  "publicBaseUrl": "https://example.com/",
+  "output": { "manifest": false },
+  "robots": {
+    "groups": [
+      { "userAgents": ["Googlebot", "Bingbot"], "disallow": ["/private/"], "allow": ["/private/press-kit.html"] },
+      { "userAgents": ["*"], "disallow": ["/admin/", "/recherche/café"] }
+    ],
+    "sitemaps": ["https://example.com/news-sitemap.xml"]
+  },
+  "urls": [
+    { "loc": "https://example.com/" },
+    { "loc": "https://example.com/about" }
+  ]
+}

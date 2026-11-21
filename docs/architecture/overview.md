@@ -20,6 +20,7 @@ crates/
   sitemap-index        Partitionnement (séquentiel exact, hachage stable FNV-1a) et index.
   sitemap-protocol     Documents JSON versionnés (configuration v1), lecteurs JSON/JSONL bornés.
   sitemap-reader       Lecture bornée de sitemaps existants (XML ou gzip), base de `inspect`.
+  sitemap-robots       robots.txt validé et déterministe (RFC 9309).
   advanced-sitemap     Façade publique : moteur (pipeline), API `Sitemap::builder()`, `explain`.
   sitemap-cli          Binaire `advanced-sitemap` (generate, validate, explain).
 ```

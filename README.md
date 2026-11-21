@@ -89,6 +89,7 @@ For large or streamed inputs, use `Engine` (see
 | `sitemap-index` | Partitioning and index layout |
 | `sitemap-protocol` | Versioned JSON documents and bounded readers |
 | `sitemap-reader` | Bounded reader of existing sitemaps (XML or gzip), used by `inspect` |
+| `sitemap-robots` | Validated, deterministic robots.txt (RFC 9309) |
 | `advanced-sitemap` | Public facade: engine, builder, planner |
 | `sitemap-cli` | `advanced-sitemap` binary |
 
