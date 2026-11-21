@@ -12,7 +12,9 @@ use std::fmt;
 use std::io;
 use std::num::NonZeroU32;
 
-use sitemap_model::limits::{MAX_SITEMAP_BYTES, MAX_SITEMAPS_PER_INDEX, MAX_URLS_PER_SITEMAP};
+use sitemap_model::limits::{
+    MAX_NEWS_PER_SITEMAP, MAX_SITEMAP_BYTES, MAX_SITEMAPS_PER_INDEX, MAX_URLS_PER_SITEMAP,
+};
 use sitemap_model::{IndexEntry, SitemapUrl, UrlEntry, W3cDateTime};
 use sitemap_storage::{ArtifactName, ArtifactStore, ArtifactWriter, Publication};
 use sitemap_xml::{Namespaces, URLSET_FOOTER, UrlsetWriter, XmlError, encode_url, urlset_header};
@@ -127,6 +129,12 @@ pub enum PushError {
         /// Configured byte limit.
         max_bytes: u64,
     },
+    /// A stable-hash partition already holds 1,000 news entries, the Google
+    /// News limit per file.
+    NewsLimit {
+        /// 1-based partition number.
+        partition: u32,
+    },
     /// Serialization failed.
     Xml(XmlError),
     /// The store failed.
@@ -147,6 +155,10 @@ impl fmt::Display for PushError {
             } => write!(
                 f,
                 "stable-hash partition {partition} is full ({max_urls} URLs or {max_bytes} bytes)"
+            ),
+            PushError::NewsLimit { partition } => write!(
+                f,
+                "stable-hash partition {partition} already holds {MAX_NEWS_PER_SITEMAP} news entries"
             ),
             PushError::Xml(error) => write!(f, "{error}"),
             PushError::Io(error) => write!(f, "store error: {error}"),
@@ -176,6 +188,8 @@ struct OpenPartition {
     name: ArtifactName,
     writer: UrlsetWriter<Box<dyn ArtifactWriter>>,
     lastmod: Option<W3cDateTime>,
+    /// `<news:news>` elements written.
+    news: u32,
 }
 
 impl OpenPartition {
@@ -260,15 +274,21 @@ impl<'s> Partitioner<'s> {
             }
         };
 
+        let is_news = entry.news.is_some();
         if let Some(open) = &self.slots[slot] {
+            let news_full = is_news && open.news >= MAX_NEWS_PER_SITEMAP;
             let full = open.writer.urls() >= u64::from(self.limits.max_urls)
-                || open.writer.bytes() + block + footer > self.limits.max_bytes;
+                || open.writer.bytes() + block + footer > self.limits.max_bytes
+                || news_full;
             if full {
                 match self.strategy {
                     PartitionStrategy::Sequential => {
                         if let Some(open) = self.slots[slot].take() {
                             self.closed.push(open.close()?);
                         }
+                    }
+                    PartitionStrategy::StableHash { .. } if news_full => {
+                        return Err(PushError::NewsLimit { partition: open.id });
                     }
                     PartitionStrategy::StableHash { .. } => {
                         return Err(PushError::PartitionFull {
@@ -299,6 +319,7 @@ impl<'s> Partitioner<'s> {
             )));
         };
         open.writer.write_encoded(&self.scratch)?;
+        open.news += u32::from(is_news);
         if let Some(lastmod) = &entry.lastmod {
             let newer = open
                 .lastmod
@@ -320,6 +341,7 @@ impl<'s> Partitioner<'s> {
             name,
             writer,
             lastmod: None,
+            news: 0,
         })
     }
 
@@ -545,6 +567,60 @@ mod tests {
             }
         }
         (partitioner.finish(), store)
+    }
+
+    fn news_entry(i: usize) -> UrlEntry {
+        entry(i).with_news(sitemap_model::News {
+            publication_name: "The Example Times".to_owned(),
+            language: sitemap_model::NewsLanguage::parse("en").unwrap(),
+            publication_date: W3cDateTime::parse("2026-11-21").unwrap(),
+            title: format!("Article {i}"),
+        })
+    }
+
+    fn push_mixed(
+        strategy: PartitionStrategy,
+        count: usize,
+    ) -> Result<Vec<PartitionSummary>, PushError> {
+        let mut store = MemoryStore::new();
+        let namespaces = Namespaces {
+            news: true,
+            ..Namespaces::NONE
+        };
+        let mut partitioner = Partitioner::new(
+            &mut store,
+            strategy,
+            PartitionLimits::default(),
+            namespaces,
+            "sitemap",
+        );
+        for i in 0..count {
+            // Two news entries for one plain entry.
+            let e = if i % 3 == 2 { entry(i) } else { news_entry(i) };
+            partitioner.push(&e)?;
+        }
+        partitioner.finish()
+    }
+
+    #[test]
+    fn sequential_starts_a_new_file_after_1000_news() {
+        // 3,000 entries: 2,000 news and 1,000 plain.
+        let parts = push_mixed(PartitionStrategy::Sequential, 3_000).unwrap();
+        let counts: Vec<u64> = parts.iter().map(|p| p.urls).collect();
+        // The 1,001st news entry (entry 1,500) opens file 2; plain entries
+        // never trigger a split.
+        assert_eq!(counts, [1_500, 1_500]);
+    }
+
+    #[test]
+    fn stable_hash_reports_the_news_limit() {
+        let one = PartitionStrategy::StableHash {
+            partitions: NonZeroU32::MIN,
+        };
+        assert!(matches!(
+            push_mixed(one, 3_000),
+            Err(PushError::NewsLimit { partition: 1 })
+        ));
     }
 
     #[test]
