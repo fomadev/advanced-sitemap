@@ -9,6 +9,8 @@
 
 use std::collections::HashSet;
 
+mod video;
+
 use sitemap_model::limits::MAX_IMAGES_PER_URL;
 use sitemap_model::{
     Alternate, ChangeFreq, Diagnostic, DiagnosticCode, Image, LanguageTag, Location, Priority,
@@ -246,6 +248,7 @@ impl Validator {
 
         let alternates = self.validate_alternates(raw, loc.as_ref(), location, out);
         let images = self.validate_images(raw, location, out);
+        let videos = self.validate_videos(raw, loc.as_ref(), location, out);
 
         let has_error = out[first..].iter().any(Diagnostic::is_error);
         match loc {
@@ -256,6 +259,7 @@ impl Validator {
                 priority,
                 alternates,
                 images,
+                videos,
             }),
             _ => None,
         }
@@ -483,6 +487,7 @@ mod tests {
             images: vec![RawImage {
                 loc: Some("https://cdn.example.com/a.png".into()),
             }],
+            ..RawUrlRecord::default()
         };
         let (entry, diagnostics) = run(&standard(), &raw);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
@@ -505,6 +510,7 @@ mod tests {
             images: vec![RawImage {
                 loc: Some("/a.png".into()),
             }],
+            ..RawUrlRecord::default()
         };
         let (entry, diagnostics) = run(&standard(), &raw);
         assert!(entry.is_none());
