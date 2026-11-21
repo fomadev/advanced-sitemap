@@ -1,0 +1,11 @@
+User-agent: Googlebot
+User-agent: Bingbot
+Disallow: /private/
+Allow: /private/press-kit.html
+
+User-agent: *
+Disallow: /admin/
+Disallow: /recherche/caf%C3%A9
+
+Sitemap: https://example.com/news-sitemap.xml
+Sitemap: https://example.com/sitemap.xml
