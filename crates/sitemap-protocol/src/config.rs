@@ -224,6 +224,21 @@ pub struct OutputSection {
     /// which are always declared. Since protocol 1.1.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extensions: Vec<ExtensionSetting>,
+    /// `all` (default) republishes every file; `changed` only the files
+    /// whose bytes differ from the published ones. Since protocol 1.1.
+    #[serde(default)]
+    pub publish: PublishSetting,
+}
+
+/// Publication policy.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum PublishSetting {
+    /// Republish every file.
+    #[default]
+    All,
+    /// Republish only changed files.
+    Changed,
 }
 
 /// An optional sitemap extension.
@@ -244,6 +259,7 @@ impl Default for OutputSection {
             index: IndexSetting::default(),
             manifest: true,
             extensions: Vec::new(),
+            publish: PublishSetting::default(),
         }
     }
 }

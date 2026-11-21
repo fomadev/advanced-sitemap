@@ -126,6 +126,14 @@
             ]
           },
           "uniqueItems": true
+        },
+        "publish": {
+          "enum": [
+            "all",
+            "changed"
+          ],
+          "default": "all",
+          "description": "changed: files whose bytes equal the published file are not rewritten (since 1.1)."
         }
       }
     },

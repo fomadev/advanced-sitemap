@@ -23,12 +23,13 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "kind", "bytes"],
+        "required": ["name", "kind", "bytes", "unchanged"],
         "properties": {
           "name": { "type": "string" },
           "kind": { "enum": ["sitemap", "index", "manifest", "robots"] },
           "entries": { "type": "integer" },
-          "bytes": { "type": "integer" }
+          "bytes": { "type": "integer" },
+          "unchanged": { "type": "boolean", "description": "The published file already had these bytes and was not rewritten" }
         }
       }
     },
