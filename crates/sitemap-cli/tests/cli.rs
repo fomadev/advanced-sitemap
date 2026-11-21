@@ -267,3 +267,75 @@ fn missing_input_file_exits_3() {
         .unwrap();
     assert_eq!(code(&output), 3);
 }
+
+#[test]
+fn inspect_reads_generated_files_and_reports_json() {
+    let dir = fixtures().join("partitioned/expected");
+    let output = bin()
+        .args(["--format", "json", "inspect"])
+        .arg(dir.join("sitemap.xml"))
+        .arg(dir.join("sitemap-1.xml"))
+        .output()
+        .unwrap();
+    assert_eq!(
+        code(&output),
+        0,
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report = json(&output);
+    assert_eq!(report["status"], "valid");
+    assert_eq!(report["files"][0]["kind"], "sitemapindex");
+    assert_eq!(report["files"][0]["entries"], 3);
+    assert_eq!(report["files"][1]["kind"], "urlset");
+}
+
+#[test]
+fn inspect_exit_codes() {
+    let temp = TempDir::new("inspect");
+    let bad = temp.0.join("bad.xml");
+    fs::write(
+        &bad,
+        r#"<!DOCTYPE x [<!ENTITY a "b">]><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"/>"#,
+    )
+    .unwrap();
+    let output = bin()
+        .args(["--format", "json", "inspect"])
+        .arg(&bad)
+        .output()
+        .unwrap();
+    assert_eq!(code(&output), 1);
+    let report = json(&output);
+    assert_eq!(report["status"], "invalid");
+    assert_eq!(report["files"][0]["complete"], false);
+    assert_eq!(
+        report["files"][0]["diagnostics"][0]["code"],
+        "XML_DOCTYPE_FORBIDDEN"
+    );
+
+    let warn = temp.0.join("warn.xml");
+    fs::write(
+        &warn,
+        r#"<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://example.com/</loc></url><url><loc>https://example.com/</loc></url></urlset>"#,
+    )
+    .unwrap();
+    assert_eq!(code(&bin().arg("inspect").arg(&warn).output().unwrap()), 0);
+    let denied = bin()
+        .args(["inspect", "--deny-warnings"])
+        .arg(&warn)
+        .output()
+        .unwrap();
+    assert_eq!(code(&denied), 1);
+
+    let missing = bin()
+        .arg("inspect")
+        .arg(temp.0.join("missing.xml"))
+        .output()
+        .unwrap();
+    assert_eq!(code(&missing), 3);
+    let usage = bin()
+        .args(["inspect", "--site", "not a url", "x.xml"])
+        .output()
+        .unwrap();
+    assert_eq!(code(&usage), 2);
+}
