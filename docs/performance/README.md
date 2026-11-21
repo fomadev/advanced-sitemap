@@ -58,6 +58,16 @@ run), about 100 k URL/s or 17 MB/s, single-threaded. Peak working set while
 inspecting one 50,000-URL file: 4.8 MiB. All 1,000,000 entries were read
 back as valid.
 
+## hreflang reciprocity
+
+`validate` on the 1 M URL dataset (100,000 entries with 2 alternates, so
+200,000 links): 56.5 MiB and 4.2 s without the check, 77.8 MiB and 5.2 s
+with `--hreflang-reciprocity`. The extra 21 MiB is about 110 bytes per
+link: the edge list plus the pair map built at the end. With
+deduplication on, the set of written URLs is shared with the
+deduplication set; without it, the check keeps its own (see below for its
+size).
+
 ## Deduplication memory
 
 Deduplication keeps one 128-bit fingerprint per distinct `loc` in a

@@ -93,6 +93,17 @@ A missing required video or news field is reported as
 `news.publication.language`. URL problems in video fields use the
 `URL_*` codes.
 
+## hreflang across entries (`validation.hreflangReciprocity`)
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `HREFLANG_RETURN_LINK_MISSING` | warning | Page A lists B as an alternate, B is in the run, but B does not list A. Google ignores unconfirmed annotations |
+| `HREFLANG_CONFLICT` | warning | A names itself with one code (for example `en`) and B names A with another (`en-gb`) |
+| `HREFLANG_TARGET_NOT_LISTED` | info | Reported once with a count: alternates pointing outside the run could not be checked |
+
+These checks need every entry, so they run at the end of the run. They are
+warnings: they never block publication.
+
 ## robots.txt
 
 | Code | Severity | Meaning |

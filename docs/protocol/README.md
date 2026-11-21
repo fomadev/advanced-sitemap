@@ -37,6 +37,7 @@ JSON Schemas (draft 2020-12) are in [`schemas/`](../../schemas).
 | `validation.onInvalid` | `fail` | `fail`: publish nothing if any record is invalid. `skip`: exclude invalid records |
 | `validation.dedupe` | `true` | Drop repeated URLs and keep the first. Costs 17 to 34 bytes of memory per distinct URL (see performance) |
 | `validation.maxDiagnostics` | `1000` | Diagnostics listed in the report. Counts stay exact |
+| `validation.hreflangReciprocity` | `false` | Since 1.1. Check across entries that every alternate links back (`HREFLANG_RETURN_LINK_MISSING`) and that pages agree on language codes (`HREFLANG_CONFLICT`). Costs about 110 bytes per alternate link |
 | `partitioning.strategy` | `sequential` | `sequential` or `stable-hash` |
 | `partitioning.partitions` | none | Required by `stable-hash`, refused otherwise |
 | `partitioning.maxUrls` | `50000` | 1 to 50,000 |

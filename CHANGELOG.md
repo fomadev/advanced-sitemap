@@ -8,6 +8,11 @@ contain breaking changes.
 
 ### Added
 
+- Optional hreflang reciprocity check (`validation.hreflangReciprocity`,
+  `--hreflang-reciprocity`): missing return links, conflicting language
+  codes and links to URLs outside the run, as warnings and info. Measured
+  cost about 110 bytes per alternate link.
+
 - `sitemap-robots` crate and the `robots` configuration section: validated,
   deterministic robots.txt (RFC 9309) published with the sitemaps, listing
   the generated sitemap or index, with 7 new diagnostic codes
@@ -45,7 +50,8 @@ contain breaking changes.
   `NewsLimit`, and `InspectReport` gains `with_videos`, `with_news` and
   `news_elements`.
 - `ArtifactKind` gains `Robots`; `EngineConfig` and `ConfigDocument` gain
-  `robots`.
+  `robots`. `EngineConfig` and `ValidationSection` gain
+  `hreflang_reciprocity`.
 - `quick-xml` is now a runtime dependency (of `sitemap-reader`); `flate2`
   (pure Rust backend) is added. See ADR-0009.
 
