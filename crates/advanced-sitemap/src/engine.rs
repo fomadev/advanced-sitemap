@@ -9,6 +9,7 @@ use sitemap_index::{
 };
 use sitemap_model::{Diagnostic, DiagnosticCode, Location, RawUrlRecord, UrlEntry};
 use sitemap_protocol::{DecodeError, SourceRecord};
+use sitemap_robots::RobotsConfig;
 use sitemap_storage::{ArtifactName, ArtifactStore, Publication};
 use sitemap_validation::{ValidationOptions, Validator};
 use sitemap_xml::{Namespaces, XmlError, write_sitemap_index};
@@ -61,6 +62,9 @@ pub struct EngineConfig {
     /// another extension are rejected with `EXTENSION_NOT_DECLARED`.
     /// Default: [`Namespaces::DEFAULT`] (`xhtml` and `image`).
     pub namespaces: Namespaces,
+    /// robots.txt published with the sitemaps. The generated sitemap (or
+    /// index) is added as a `Sitemap` record when `public_base_url` is set.
+    pub robots: Option<RobotsConfig>,
 }
 
 impl Default for EngineConfig {
@@ -79,6 +83,7 @@ impl Default for EngineConfig {
             },
             manifest: true,
             namespaces: Namespaces::DEFAULT,
+            robots: None,
         }
     }
 }
@@ -166,6 +171,20 @@ impl Engine {
             return Err(EngineError::Config(format!(
                 "file stem {stem:?} must be 1-64 characters from [A-Za-z0-9_-]"
             )));
+        }
+        if let Some(robots) = &config.robots {
+            let (_, diagnostics) = robots.build();
+            let errors: Vec<String> = diagnostics
+                .iter()
+                .filter(|d| d.is_error())
+                .map(ToString::to_string)
+                .collect();
+            if !errors.is_empty() {
+                return Err(EngineError::Config(format!(
+                    "invalid robots configuration: {}",
+                    errors.join("; ")
+                )));
+            }
         }
         let validator = Validator::new(config.validation.clone());
         Ok(Self { config, validator })
@@ -505,6 +524,59 @@ impl Engine {
                 entries: Some(entries.len() as u64),
                 bytes,
             });
+        }
+
+        if let Some(robots) = &self.config.robots {
+            let (built, diagnostics) = robots.build();
+            for diagnostic in diagnostics {
+                collector.push(diagnostic);
+            }
+            if let Some(mut robots) = built {
+                let entry_point = plan
+                    .index
+                    .as_ref()
+                    .map(|(name, _)| name.clone())
+                    .or_else(|| match plan.partitions.as_slice() {
+                        [single] => Some(single.target.clone()),
+                        _ => None,
+                    });
+                match (&self.config.layout.public_base_url, entry_point) {
+                    (Some(base), Some(name)) => {
+                        if let Ok(url) = base.url().join(name.as_str()) {
+                            robots.add_sitemap(url);
+                        }
+                    }
+                    _ => collector.push(
+                        Diagnostic::new(
+                            DiagnosticCode::RobotsSitemapNotListed,
+                            "robots.txt cannot list the generated sitemap without publicBaseUrl",
+                            Location::artifact("robots.txt"),
+                        )
+                        .with_suggestion(
+                            "Set publicBaseUrl, or list the sitemap in robots.sitemaps.",
+                        ),
+                    ),
+                }
+                let (text, warning) = robots.render_checked();
+                if let Some(warning) = warning {
+                    collector.push(warning);
+                }
+                let name = ArtifactName::new("robots.txt")
+                    .map_err(|e| EngineError::Config(e.to_string()))?;
+                let mut writer = store.create(&name)?;
+                writer.write_all(text.as_bytes())?;
+                writer.finish()?;
+                publications.push(Publication {
+                    staged: name.clone(),
+                    target: name.clone(),
+                });
+                artifacts.push(ArtifactReport {
+                    name: name.as_str().to_owned(),
+                    kind: ArtifactKind::Robots,
+                    entries: None,
+                    bytes: text.len() as u64,
+                });
+            }
         }
 
         if self.config.manifest {

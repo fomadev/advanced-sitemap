@@ -66,6 +66,7 @@ pub use sitemap_protocol::{self as protocol, ConfigDocument, SourceRecord};
 pub use sitemap_reader::{
     self as reader, DocumentKind, InspectOptions, InspectReport, Item, ReaderLimits,
 };
+pub use sitemap_robots::{RobotsConfig, RobotsGroup, RobotsTxt};
 pub use sitemap_storage::{ArtifactName, ArtifactStore, FsStore, MemoryStore, NullStore};
 pub use sitemap_validation::{ValidationMode, ValidationOptions, Validator};
 pub use sitemap_xml::{self as xml, Namespaces};

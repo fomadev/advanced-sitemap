@@ -166,6 +166,7 @@ pub fn resolve_config(doc: ConfigDocument, base_dir: &Path) -> Result<ResolvedCo
                     ..Namespaces::NONE
                 }),
             }),
+        robots: doc.robots,
     };
 
     Ok(ResolvedConfig {

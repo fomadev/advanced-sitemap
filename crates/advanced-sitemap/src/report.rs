@@ -57,6 +57,8 @@ pub enum ArtifactKind {
     Index,
     /// The JSON manifest.
     Manifest,
+    /// robots.txt.
+    Robots,
 }
 
 /// An artifact produced by the run.

@@ -288,3 +288,45 @@ fn file_store_end_to_end_and_well_formed() {
     assert_eq!(total, 120_000);
     fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn invalid_robots_configuration_is_refused() {
+    let config = EngineConfig {
+        robots: Some(advanced_sitemap::RobotsConfig {
+            groups: vec![advanced_sitemap::RobotsGroup {
+                user_agents: vec!["*".into()],
+                disallow: vec!["private".into()],
+                allow: vec![],
+            }],
+            sitemaps: vec![],
+        }),
+        ..EngineConfig::default()
+    };
+    let error = Engine::new(config).unwrap_err().to_string();
+    assert!(error.contains("ROBOTS_PATH_INVALID"), "{error}");
+}
+
+#[test]
+fn robots_without_public_base_url_warns() {
+    let config = EngineConfig {
+        robots: Some(advanced_sitemap::RobotsConfig::default()),
+        ..EngineConfig::default()
+    };
+    let engine = Engine::new(config).unwrap();
+    let mut store = MemoryStore::new();
+    let report = engine
+        .run(
+            records([RawUrlRecord::with_loc("https://example.com/")]),
+            &mut store,
+            RunMode::Publish,
+        )
+        .unwrap();
+    assert!(report.succeeded());
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|d| d.code.as_str() == "ROBOTS_SITEMAP_NOT_LISTED")
+    );
+    assert_eq!(store.published().unwrap()["robots.txt"], b"");
+}
