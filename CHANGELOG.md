@@ -8,6 +8,11 @@ contain breaking changes.
 
 ### Added
 
+- Design of the Lifecycle Engine (proposed, not implemented):
+  `docs/architecture/lifecycle/` (invariants I1 to I10, phases A to D,
+  snapshot and diff, incremental generation, stable partitioning, planner
+  and explain) and ADR-0010 to ADR-0013.
+
 - Optional hreflang reciprocity check (`validation.hreflangReciprocity`,
   `--hreflang-reciprocity`): missing return links, conflicting language
   codes and links to URLs outside the run, as warnings and info. Measured
