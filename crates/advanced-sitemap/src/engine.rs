@@ -66,6 +66,8 @@ pub struct EngineConfig {
     /// robots.txt published with the sitemaps. The generated sitemap (or
     /// index) is added as a `Sitemap` record when `public_base_url` is set.
     pub robots: Option<RobotsConfig>,
+    /// Which artifacts a publishing run replaces. Default: [`PublishPolicy::All`].
+    pub publish: PublishPolicy,
     /// Check hreflang return links and conflicting codes across entries.
     /// Costs about 110 bytes per alternate link (measured). Default: `false`.
     pub hreflang_reciprocity: bool,
@@ -89,8 +91,21 @@ impl Default for EngineConfig {
             namespaces: Namespaces::DEFAULT,
             robots: None,
             hreflang_reciprocity: false,
+            publish: PublishPolicy::All,
         }
     }
+}
+
+/// Which artifacts a publishing run replaces.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PublishPolicy {
+    /// Republish every artifact (the behaviour before 0.2).
+    #[default]
+    All,
+    /// Republish only artifacts whose bytes differ from the published file.
+    /// The published result is identical to `All`; unchanged files keep
+    /// their modification time and are not rewritten.
+    Changed,
 }
 
 /// Errors that stop a run (as opposed to diagnostics, which are reported).
@@ -243,6 +258,9 @@ impl Engine {
         mode: RunMode,
     ) -> Result<GenerationReport, EngineError> {
         let description = store.describe();
+        store.set_compare_with_published(
+            mode == RunMode::Publish && self.config.publish == PublishPolicy::Changed,
+        );
         let outcome = match self.stream(inputs, store) {
             Ok(outcome) => outcome,
             Err(error) => {
@@ -523,6 +541,7 @@ impl Engine {
             .map(|(publication, partition)| ArtifactReport {
                 name: publication.target.as_str().to_owned(),
                 kind: ArtifactKind::Sitemap,
+                unchanged: false,
                 entries: Some(partition.urls),
                 bytes: partition.bytes,
             })
@@ -543,6 +562,7 @@ impl Engine {
             artifacts.push(ArtifactReport {
                 name: name.as_str().to_owned(),
                 kind: ArtifactKind::Index,
+                unchanged: false,
                 entries: Some(entries.len() as u64),
                 bytes,
             });
@@ -595,6 +615,7 @@ impl Engine {
                 artifacts.push(ArtifactReport {
                     name: name.as_str().to_owned(),
                     kind: ArtifactKind::Robots,
+                    unchanged: false,
                     entries: None,
                     bytes: text.len() as u64,
                 });
@@ -638,9 +659,24 @@ impl Engine {
             artifacts.push(ArtifactReport {
                 name: name.as_str().to_owned(),
                 kind: ArtifactKind::Manifest,
+                unchanged: false,
                 entries: None,
                 bytes: bytes.len() as u64,
             });
+        }
+
+        if mode == RunMode::Publish && self.config.publish == PublishPolicy::Changed {
+            // `publications[i]` describes `artifacts[i]`: both are built in
+            // the same order above.
+            let mut kept = Vec::with_capacity(publications.len());
+            for (publication, artifact) in publications.into_iter().zip(artifacts.iter_mut()) {
+                if store.staged_matches_published(&publication.staged, &publication.target)? {
+                    artifact.unchanged = true;
+                } else {
+                    kept.push(publication);
+                }
+            }
+            publications = kept;
         }
 
         let status = match mode {

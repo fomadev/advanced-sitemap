@@ -48,7 +48,9 @@ mod report;
 mod sitemap;
 
 pub use config::{InputSpec, ResolvedConfig, open_input, resolve_config};
-pub use engine::{Engine, EngineConfig, EngineError, InvalidPolicy, RunMode, records};
+pub use engine::{
+    Engine, EngineConfig, EngineError, InvalidPolicy, PublishPolicy, RunMode, records,
+};
 pub use manifest::{Manifest, ManifestArtifact};
 pub use report::{
     ArtifactKind, ArtifactReport, GenerationReport, RunStatus, SeverityCounts, Stats,
@@ -68,7 +70,10 @@ pub use sitemap_reader::{
     self as reader, DocumentKind, InspectOptions, InspectReport, Item, ReaderLimits,
 };
 pub use sitemap_robots::{RobotsConfig, RobotsGroup, RobotsTxt};
-pub use sitemap_storage::{ArtifactName, ArtifactStore, FsStore, MemoryStore, NullStore};
+pub use sitemap_storage::{
+    ArtifactName, ArtifactStore, ArtifactWriter, FsStore, MemoryStore, NullStore, Publication,
+    StoreDescription,
+};
 pub use sitemap_validation::{ValidationMode, ValidationOptions, Validator};
 pub use sitemap_xml::{self as xml, Namespaces};
 

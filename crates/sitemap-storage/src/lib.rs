@@ -12,10 +12,10 @@
 //! | [`FsStore`] | hidden directory inside the output directory | atomic rename on the same volume | not atomic, ordered |
 //! | [`MemoryStore`] | in memory | atomic | atomic |
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 use std::fs::{self, File};
-use std::io::{self, BufWriter, Write};
+use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -113,6 +113,26 @@ pub trait ArtifactStore {
     /// Discards every staged artifact. Published artifacts are untouched.
     fn discard(&mut self) -> io::Result<()>;
 
+    /// Asks the store to compare new artifacts with the published file of the
+    /// same name while they are written, and to avoid writing them at all
+    /// when they turn out identical. A hint: the default ignores it.
+    fn set_compare_with_published(&mut self, enabled: bool) {
+        let _ = enabled;
+    }
+
+    /// `true` when the finished staged artifact `staged` has exactly the same
+    /// bytes as the published artifact `target`. Used to skip republishing
+    /// unchanged files. The default (`false`) is always safe: the artifact is
+    /// then republished.
+    fn staged_matches_published(
+        &self,
+        staged: &ArtifactName,
+        target: &ArtifactName,
+    ) -> io::Result<bool> {
+        let _ = (staged, target);
+        Ok(false)
+    }
+
     /// Describes the store and its guarantees.
     fn describe(&self) -> StoreDescription;
 }
@@ -135,6 +155,10 @@ pub struct FsStore {
     root: PathBuf,
     staging: Option<PathBuf>,
     staged: Vec<ArtifactName>,
+    compare: bool,
+    /// Staged artifacts found identical to the published file of the same
+    /// name while being written: no staging file exists for them.
+    identical: Arc<Mutex<HashSet<ArtifactName>>>,
 }
 
 impl FsStore {
@@ -144,6 +168,8 @@ impl FsStore {
             root: root.into(),
             staging: None,
             staged: Vec::new(),
+            compare: false,
+            identical: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 
@@ -174,6 +200,7 @@ impl FsStore {
     }
 
     fn cleanup_staging(&mut self) -> io::Result<()> {
+        lock_set(&self.identical)?.clear();
         if let Some(dir) = self.staging.take() {
             for name in self.staged.drain(..) {
                 match fs::remove_file(dir.join(name.as_str())) {
@@ -189,44 +216,145 @@ impl FsStore {
     }
 }
 
+const WRITE_BUFFER: usize = 256 * 1024;
+
 struct FsWriter {
-    inner: BufWriter<File>,
+    state: WriterState,
     bytes: u64,
+}
+
+enum WriterState {
+    /// Writing the staging file.
+    Writing(BufWriter<File>),
+    /// Every byte so far equals the published file: nothing written yet.
+    Comparing(Box<Comparison>),
+}
+
+struct Comparison {
+    name: ArtifactName,
+    published: BufReader<File>,
+    published_path: PathBuf,
+    staged_path: PathBuf,
+    scratch: Vec<u8>,
+    identical: Arc<Mutex<HashSet<ArtifactName>>>,
+}
+
+impl FsWriter {
+    /// Leaves comparison mode: creates the staging file and copies the
+    /// `matched` bytes already known to equal the published file.
+    fn diverge(&mut self) -> io::Result<()> {
+        let WriterState::Comparing(comparison) = &self.state else {
+            return Ok(());
+        };
+        let file = File::create_new(&comparison.staged_path)?;
+        let mut writer = BufWriter::with_capacity(WRITE_BUFFER, file);
+        let mut prefix = File::open(&comparison.published_path)?.take(self.bytes);
+        let copied = io::copy(&mut prefix, &mut writer)?;
+        if copied != self.bytes {
+            return Err(io::Error::other(
+                "published file changed while it was being compared",
+            ));
+        }
+        self.state = WriterState::Writing(writer);
+        Ok(())
+    }
 }
 
 impl Write for FsWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let written = self.inner.write(buf)?;
+        if let WriterState::Comparing(comparison) = &mut self.state {
+            comparison.scratch.resize(buf.len(), 0);
+            let n = read_full(&mut comparison.published, &mut comparison.scratch)?;
+            if n == buf.len() && comparison.scratch[..] == *buf {
+                self.bytes += buf.len() as u64;
+                return Ok(buf.len());
+            }
+            self.diverge()?;
+        }
+        let WriterState::Writing(writer) = &mut self.state else {
+            return Err(io::Error::other("writer is not writing"));
+        };
+        let written = writer.write(buf)?;
         self.bytes += written as u64;
         Ok(written)
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.inner.flush()
+        match &mut self.state {
+            WriterState::Writing(writer) => writer.flush(),
+            WriterState::Comparing(_) => Ok(()),
+        }
     }
 }
 
 impl ArtifactWriter for FsWriter {
-    fn finish(self: Box<Self>) -> io::Result<u64> {
+    fn finish(mut self: Box<Self>) -> io::Result<u64> {
+        if let WriterState::Comparing(comparison) = &mut self.state {
+            let mut probe = [0u8; 1];
+            if read_full(&mut comparison.published, &mut probe)? == 0 {
+                // Same bytes and same length: no staging file is needed.
+                lock_set(&comparison.identical)?.insert(comparison.name.clone());
+                return Ok(self.bytes);
+            }
+            // The published file is longer: the new artifact is a prefix.
+            self.diverge()?;
+        }
         let bytes = self.bytes;
-        let file = self
-            .inner
-            .into_inner()
-            .map_err(io::IntoInnerError::into_error)?;
-        file.sync_all()?;
+        if let WriterState::Writing(writer) = self.state {
+            // Durability is ensured in `publish`, right before the rename, so
+            // that staged files which are never published cost no `fsync`.
+            writer
+                .into_inner()
+                .map_err(io::IntoInnerError::into_error)?;
+        }
         Ok(bytes)
     }
+}
+
+fn lock_set(
+    set: &Mutex<HashSet<ArtifactName>>,
+) -> io::Result<MutexGuard<'_, HashSet<ArtifactName>>> {
+    set.lock()
+        .map_err(|_| io::Error::other("identical-artifact set poisoned"))
 }
 
 impl ArtifactStore for FsStore {
     fn create(&mut self, name: &ArtifactName) -> io::Result<Box<dyn ArtifactWriter>> {
         let dir = self.staging_dir()?;
-        let file = File::create_new(dir.join(name.as_str()))?;
+        let staged_path = dir.join(name.as_str());
+        if self.staged.contains(name) {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("artifact {name} is already staged"),
+            ));
+        }
+        let published_path = self.root.join(name.as_str());
+        let published = if self.compare {
+            match File::open(&published_path) {
+                Ok(file) if file.metadata()?.is_file() => Some(file),
+                Ok(_) => None,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+                Err(error) => return Err(error),
+            }
+        } else {
+            None
+        };
+        let state = match published {
+            Some(file) => WriterState::Comparing(Box::new(Comparison {
+                name: name.clone(),
+                published: BufReader::with_capacity(WRITE_BUFFER, file),
+                published_path,
+                staged_path,
+                scratch: Vec::new(),
+                identical: Arc::clone(&self.identical),
+            })),
+            None => WriterState::Writing(BufWriter::with_capacity(
+                WRITE_BUFFER,
+                File::create_new(staged_path)?,
+            )),
+        };
         self.staged.push(name.clone());
-        Ok(Box::new(FsWriter {
-            inner: BufWriter::with_capacity(256 * 1024, file),
-            bytes: 0,
-        }))
+        Ok(Box::new(FsWriter { state, bytes: 0 }))
     }
 
     fn read_published(&self, name: &ArtifactName) -> io::Result<Option<Vec<u8>>> {
@@ -251,11 +379,25 @@ impl ArtifactStore for FsStore {
                 )));
             }
         }
+        let identical = lock_set(&self.identical)?.clone();
         for step in plan {
-            fs::rename(
-                dir.join(step.staged.as_str()),
-                self.root.join(step.target.as_str()),
-            )?;
+            let staged = dir.join(step.staged.as_str());
+            if identical.contains(&step.staged) {
+                if step.staged == step.target {
+                    // Already published with these exact bytes.
+                    continue;
+                }
+                // Same bytes as the published file of the staged name:
+                // materialize it under the new name.
+                fs::copy(self.root.join(step.staged.as_str()), &staged)?;
+            }
+            // Flush the data to disk before it becomes visible under its
+            // public name (write access is required to sync on Windows).
+            fs::OpenOptions::new()
+                .write(true)
+                .open(&staged)?
+                .sync_all()?;
+            fs::rename(staged, self.root.join(step.target.as_str()))?;
         }
         // Remaining staged files (not in the plan) and the staging directory.
         self.cleanup_staging()
@@ -263,6 +405,48 @@ impl ArtifactStore for FsStore {
 
     fn discard(&mut self) -> io::Result<()> {
         self.cleanup_staging()
+    }
+
+    fn set_compare_with_published(&mut self, enabled: bool) {
+        self.compare = enabled;
+    }
+
+    fn staged_matches_published(
+        &self,
+        staged: &ArtifactName,
+        target: &ArtifactName,
+    ) -> io::Result<bool> {
+        let Some(dir) = &self.staging else {
+            return Ok(false);
+        };
+        if !self.staged.contains(staged) {
+            return Ok(false);
+        }
+        if lock_set(&self.identical)?.contains(staged) {
+            if staged == target {
+                return Ok(true);
+            }
+            // Identical to the published file of the staged name; compare that
+            // file with the target.
+            let a = self.root.join(staged.as_str());
+            let b = self.root.join(target.as_str());
+            return match (File::open(a), File::open(b)) {
+                (Ok(a), Ok(b)) => same_bytes(a, b),
+                _ => Ok(false),
+            };
+        }
+        let published = self.root.join(target.as_str());
+        let published_len = match fs::metadata(&published) {
+            Ok(meta) if meta.is_file() => meta.len(),
+            Ok(_) => return Ok(false),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(error),
+        };
+        let staged_path = dir.join(staged.as_str());
+        if fs::metadata(&staged_path)?.len() != published_len {
+            return Ok(false);
+        }
+        same_bytes(File::open(staged_path)?, File::open(published)?)
     }
 
     fn describe(&self) -> StoreDescription {
@@ -273,6 +457,39 @@ impl ArtifactStore for FsStore {
             atomic_set: false,
         }
     }
+}
+
+/// Compares two readers byte for byte, in fixed-size chunks.
+fn same_bytes(a: impl Read, b: impl Read) -> io::Result<bool> {
+    const CHUNK: usize = 64 * 1024;
+    let mut a = BufReader::with_capacity(CHUNK, a);
+    let mut b = BufReader::with_capacity(CHUNK, b);
+    let mut left = vec![0u8; CHUNK];
+    let mut right = vec![0u8; CHUNK];
+    loop {
+        let n = read_full(&mut a, &mut left)?;
+        let m = read_full(&mut b, &mut right)?;
+        if n != m || left[..n] != right[..m] {
+            return Ok(false);
+        }
+        if n == 0 {
+            return Ok(true);
+        }
+    }
+}
+
+/// Fills `buf` unless the end of input is reached; returns the bytes read.
+fn read_full(reader: &mut impl Read, buf: &mut [u8]) -> io::Result<usize> {
+    let mut filled = 0;
+    while filled < buf.len() {
+        match reader.read(&mut buf[filled..]) {
+            Ok(0) => break,
+            Ok(n) => filled += n,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(filled)
 }
 
 impl Drop for FsStore {
@@ -401,6 +618,20 @@ impl ArtifactStore for MemoryStore {
         Ok(())
     }
 
+    fn staged_matches_published(
+        &self,
+        staged: &ArtifactName,
+        target: &ArtifactName,
+    ) -> io::Result<bool> {
+        let inner = lock(&self.inner)?;
+        Ok(
+            match (inner.staged.get(staged), inner.published.get(target)) {
+                (Some(a), Some(b)) => a == b,
+                _ => false,
+            },
+        )
+    }
+
     fn describe(&self) -> StoreDescription {
         StoreDescription {
             kind: "memory",
@@ -522,6 +753,152 @@ mod tests {
             .collect();
         names.sort();
         names
+    }
+
+    fn stage(store: &mut dyn ArtifactStore, name: &str, bytes: &[u8]) -> ArtifactName {
+        let name = ArtifactName::new(name).unwrap();
+        let mut writer = store.create(&name).unwrap();
+        writer.write_all(bytes).unwrap();
+        writer.finish().unwrap();
+        name
+    }
+
+    fn check_matching(store: &mut dyn ArtifactStore) {
+        let a = stage(store, "a.xml", b"same content");
+        store
+            .publish(&[Publication {
+                staged: a.clone(),
+                target: a.clone(),
+            }])
+            .unwrap();
+        let same = stage(store, "a.xml", b"same content");
+        let longer = stage(store, "b.xml", b"same content!");
+        let other = stage(store, "c.xml", b"same contenT");
+        let target = ArtifactName::new("a.xml").unwrap();
+        let missing = ArtifactName::new("missing.xml").unwrap();
+        assert!(store.staged_matches_published(&same, &target).unwrap());
+        assert!(!store.staged_matches_published(&longer, &target).unwrap());
+        assert!(!store.staged_matches_published(&other, &target).unwrap());
+        assert!(!store.staged_matches_published(&same, &missing).unwrap());
+        assert!(!store.staged_matches_published(&missing, &target).unwrap());
+        store.discard().unwrap();
+    }
+
+    #[test]
+    fn staged_files_are_compared_byte_for_byte() {
+        let tmp = TempDir::new("compare");
+        check_matching(&mut FsStore::new(&tmp.0));
+        check_matching(&mut MemoryStore::new());
+        let mut null = NullStore::new();
+        let name = stage(&mut null, "a.xml", b"x");
+        assert!(!null.staged_matches_published(&name, &name).unwrap());
+    }
+
+    fn publish_same(store: &mut FsStore, name: &str, bytes: &[u8]) {
+        let staged = stage(store, name, bytes);
+        store
+            .publish(&[Publication {
+                staged: staged.clone(),
+                target: staged,
+            }])
+            .unwrap();
+    }
+
+    #[test]
+    fn compare_mode_writes_nothing_for_identical_files() {
+        let tmp = TempDir::new("compare-mode");
+        let mut store = FsStore::new(&tmp.0);
+        let body = b"<urlset>abcdefghij</urlset>
+"
+        .repeat(20_000);
+        publish_same(&mut store, "same.xml", &body);
+        publish_same(&mut store, "middle.xml", &body);
+        publish_same(&mut store, "longer.xml", &body);
+        publish_same(&mut store, "shorter.xml", &body[..body.len() - 10]);
+
+        store.set_compare_with_published(true);
+        let same = stage(&mut store, "same.xml", &body);
+        let mut changed = body.clone();
+        changed[body.len() / 2] = b'#';
+        let middle = stage(&mut store, "middle.xml", &changed);
+        let longer = stage(&mut store, "longer.xml", &body[..body.len() - 10]);
+        let shorter = stage(&mut store, "shorter.xml", &body);
+        let fresh = stage(&mut store, "fresh.xml", b"new");
+
+        let staging = store.staging.clone().unwrap();
+        assert!(
+            !staging.join("same.xml").exists(),
+            "identical file was written"
+        );
+        assert!(store.staged_matches_published(&same, &same).unwrap());
+        for (name, expected) in [
+            (&middle, &changed[..]),
+            (&longer, &body[..body.len() - 10]),
+            (&shorter, &body[..]),
+            (&fresh, &b"new"[..]),
+        ] {
+            assert!(
+                !store.staged_matches_published(name, name).unwrap(),
+                "{name}"
+            );
+            assert_eq!(
+                fs::read(staging.join(name.as_str())).unwrap(),
+                expected,
+                "{name}"
+            );
+        }
+
+        let plan: Vec<Publication> = [&same, &middle, &longer, &shorter, &fresh]
+            .into_iter()
+            .map(|n| Publication {
+                staged: n.clone(),
+                target: n.clone(),
+            })
+            .collect();
+        store.publish(&plan).unwrap();
+        assert_eq!(fs::read(tmp.0.join("same.xml")).unwrap(), body);
+        assert_eq!(fs::read(tmp.0.join("middle.xml")).unwrap(), changed);
+        assert_eq!(fs::read(tmp.0.join("shorter.xml")).unwrap(), body);
+        assert!(
+            !entries(&tmp.0)
+                .iter()
+                .any(|n| n.starts_with(STAGING_PREFIX))
+        );
+    }
+
+    #[test]
+    fn compare_mode_materializes_identical_files_under_a_new_name() {
+        let tmp = TempDir::new("compare-rename");
+        let mut store = FsStore::new(&tmp.0);
+        publish_same(&mut store, "sitemap-1.xml", b"content");
+        store.set_compare_with_published(true);
+        let staged = stage(&mut store, "sitemap-1.xml", b"content");
+        let target = ArtifactName::new("sitemap.xml").unwrap();
+        assert!(!store.staged_matches_published(&staged, &target).unwrap());
+        store.publish(&[Publication { staged, target }]).unwrap();
+        assert_eq!(fs::read(tmp.0.join("sitemap.xml")).unwrap(), b"content");
+        assert_eq!(fs::read(tmp.0.join("sitemap-1.xml")).unwrap(), b"content");
+    }
+
+    #[test]
+    fn large_files_are_compared_across_chunks() {
+        let tmp = TempDir::new("compare-large");
+        let mut store = FsStore::new(&tmp.0);
+        let mut big = vec![b'x'; 300_000];
+        let a = stage(&mut store, "big.xml", &big);
+        store
+            .publish(&[Publication {
+                staged: a.clone(),
+                target: a.clone(),
+            }])
+            .unwrap();
+        let same = stage(&mut store, "big.xml", &big);
+        assert!(store.staged_matches_published(&same, &a).unwrap());
+        store.discard().unwrap();
+        big[299_999] = b'y';
+        let changed = stage(&mut store, "big.xml", &big);
+        assert!(!store.staged_matches_published(&changed, &a).unwrap());
+        store.discard().unwrap();
     }
 
     #[test]

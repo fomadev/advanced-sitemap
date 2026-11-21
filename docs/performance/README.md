@@ -50,6 +50,30 @@ Observations:
   the first `validate` at 1 M read the input from a cold cache. Treat these
   numbers as orders of magnitude.
 
+## Republishing only changed files
+
+`generate --skip-unchanged` (`output.publish = "changed"`) compares each new
+file with the published one while writing it and writes nothing while the
+bytes are identical. Same dataset, same machine, output already published:
+
+| Run | 1 M URLs (22 files) | 5 M URLs (102 files) |
+|---|---|---|
+| `generate` (republish all) | 10.6 to 12.7 s | 44.1 s (69 to 123 s in earlier runs) |
+| `generate --skip-unchanged`, nothing changed | 5.4 to 5.6 s | 22.4 to 22.8 s |
+| `validate` (no output at all), for reference | 4.2 to 7.1 s | 23.6 s |
+| `--skip-unchanged`, one `lastmod` changed | 5.8 s, 2 files republished | not measured |
+
+With nothing to republish, `generate` costs what `validate` costs: reading,
+validating and encoding. The disk of this machine is noisy, as the spread
+of the full runs shows.
+
+How the design got there, measured at 1 M URLs: comparing after writing
+the staging file saved nothing (12.2 s against 12.4 s). Moving the `fsync`
+from the end of each staging write to just before its rename brought the
+unchanged rerun to 4.5 s at 1 M, but not at 5 M (74.8 s), where writing
+848 MB of staging files still dominated. Comparing while writing removed
+that cost.
+
 ## Inspecting existing files
 
 `inspect` on the 20 files produced by `generate` for 1 M URLs (168.6 MB):

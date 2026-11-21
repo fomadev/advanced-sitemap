@@ -16,8 +16,8 @@ mod reader;
 
 pub use config::{
     ConfigDocument, ExtensionSetting, IndexSetting, InvalidPolicySetting, OutputSection,
-    PartitioningSection, SourceFormat, SourceSection, StrategySetting, ValidationModeSetting,
-    ValidationSection,
+    PartitioningSection, PublishSetting, SourceFormat, SourceSection, StrategySetting,
+    ValidationModeSetting, ValidationSection,
 };
 pub use reader::{
     DEFAULT_MAX_DOCUMENT_BYTES, DEFAULT_MAX_LINE_BYTES, DecodeError, JsonArrayReader, JsonlReader,

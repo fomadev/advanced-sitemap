@@ -8,6 +8,16 @@ contain breaking changes.
 
 ### Added
 
+- Phase A of the Lifecycle Engine: `output.publish = "changed"` and
+  `generate --skip-unchanged` republish only files whose bytes change, with
+  the same published result. `FsStore` compares each new artifact with the
+  published file while writing it and writes nothing while they match.
+  Reports mark such artifacts `"unchanged": true`. Measured: an unchanged
+  5 M URL rerun takes 22.6 s instead of 44 s or more.
+- `ArtifactStore::set_compare_with_published` and
+  `ArtifactStore::staged_matches_published`, with safe default
+  implementations.
+
 - Design of the Lifecycle Engine (proposed, not implemented):
   `docs/architecture/lifecycle/` (invariants I1 to I10, phases A to D,
   snapshot and diff, incremental generation, stable partitioning, planner
@@ -47,6 +57,11 @@ contain breaking changes.
 
 ### Changed
 
+- `FsStore` now calls `fsync` on each file right before renaming it into
+  place, instead of at the end of its staging write: same durability, no
+  cost for staged files that are never published.
+- `ArtifactReport` gains `unchanged`; `EngineConfig` gains `publish`;
+  `OutputSection` gains `publish`.
 - `UrlEntry` has a new `videos` field and `Namespaces` a new `video` field:
   code that builds them with struct literals must add the field.
   `Namespaces::DEFAULT` (`xhtml` and `image`) is what the engine declares by

@@ -47,6 +47,7 @@ Command-line options override the configuration document.
 | `--index auto\|always\|never` | `output.index` |
 | `--file-stem NAME` | `output.fileStem` |
 | `--no-manifest` (`generate` only) | `output.manifest = false` |
+| `--skip-unchanged` (`generate` only) | `output.publish = "changed"` |
 | `--deny-warnings` (`generate`, `validate`, `inspect`) | exit 1 if any warning or error is reported |
 | `--sample N` (`explain` only) | number of records sampled, default 1000 |
 

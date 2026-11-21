@@ -61,6 +61,9 @@ enum Command {
         /// Do not write the manifest file.
         #[arg(long)]
         no_manifest: bool,
+        /// Only republish files whose bytes changed (output.publish = "changed").
+        #[arg(long)]
+        skip_unchanged: bool,
         /// Exit with code 1 when warnings are reported.
         #[arg(long)]
         deny_warnings: bool,
@@ -349,10 +352,14 @@ fn main() -> ExitCode {
             common,
             out,
             no_manifest,
+            skip_unchanged,
             deny_warnings,
         } => load(&common, out.as_deref()).and_then(|mut resolved| {
             if no_manifest {
                 resolved.engine.manifest = false;
+            }
+            if skip_unchanged {
+                resolved.engine.publish = advanced_sitemap::PublishPolicy::Changed;
             }
             let report = run_engine(resolved, RunMode::Publish)?;
             Ok(finish_report("generate", &report, format, deny_warnings))
@@ -577,8 +584,14 @@ fn print_report(command: &str, report: &GenerationReport) {
                 .map(|n| format!("{n:>8} entries"))
                 .unwrap_or_else(|| format!("{:>16}", ""));
             println!(
-                "    {:<width$}  {entries}  {:>12} bytes",
-                artifact.name, artifact.bytes
+                "    {:<width$}  {entries}  {:>12} bytes{}",
+                artifact.name,
+                artifact.bytes,
+                if artifact.unchanged {
+                    "  (unchanged)"
+                } else {
+                    ""
+                }
             );
         }
     }

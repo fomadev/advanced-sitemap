@@ -46,6 +46,7 @@ JSON Schemas (draft 2020-12) are in [`schemas/`](../../schemas).
 | `output.fileStem` | `sitemap` | `[A-Za-z0-9_-]`, 1 to 64 characters |
 | `output.index` | `auto` | `auto`, `always` or `never` |
 | `output.manifest` | `true` | Write `<stem>.manifest.json` |
+| `output.publish` | `all` | Since 1.1. `changed`: files whose bytes equal the published file are not rewritten (same result, less disk I/O). The report marks them `"unchanged": true` |
 | `output.extensions` | `[]` | Since 1.1. Extra namespaces declared on every file: `video`, `news`. `xhtml` and `image` are always declared. A record using an undeclared extension gets `EXTENSION_NOT_DECLARED` |
 | `source` / `urls` | none | A file, or inline records. The two are mutually exclusive |
 | `robots` | none | Since 1.1. Publishes `robots.txt` next to the sitemaps (see below) |
