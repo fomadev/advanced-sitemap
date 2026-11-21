@@ -35,10 +35,13 @@ use quick_xml::XmlVersion;
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::name::ResolveResult;
 use quick_xml::reader::NsReader;
-use sitemap_model::limits::{MAX_SITEMAP_BYTES, MAX_SITEMAPS_PER_INDEX, MAX_URLS_PER_SITEMAP};
+use sitemap_model::limits::{
+    MAX_NEWS_PER_SITEMAP, MAX_SITEMAP_BYTES, MAX_SITEMAPS_PER_INDEX, MAX_URLS_PER_SITEMAP,
+};
 use sitemap_model::{
-    Diagnostic, DiagnosticCode, IndexEntry, Location, RawAlternate, RawImage, RawUrlRecord,
-    RawVideo, RawVideoPlatform, RawVideoRestriction, RawVideoUploader, UrlEntry,
+    Diagnostic, DiagnosticCode, IndexEntry, Location, RawAlternate, RawImage, RawNews,
+    RawNewsPublication, RawUrlRecord, RawVideo, RawVideoPlatform, RawVideoRestriction,
+    RawVideoUploader, UrlEntry,
 };
 use sitemap_validation::{ValidationMode, ValidationOptions, Validator};
 
@@ -50,6 +53,8 @@ pub const XHTML_NS: &str = "http://www.w3.org/1999/xhtml";
 pub const IMAGE_NS: &str = "http://www.google.com/schemas/sitemap-image/1.1";
 /// Namespace of Google video sitemaps.
 pub const VIDEO_NS: &str = "http://www.google.com/schemas/sitemap-video/1.1";
+/// Namespace of Google News sitemaps.
+pub const NEWS_NS: &str = "http://www.google.com/schemas/sitemap-news/0.9";
 
 /// Resource limits applied while reading.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -115,6 +120,9 @@ impl DocumentKind {
 }
 
 /// A valid entry read from the document.
+// Items are handed to the callback one at a time and never stored in bulk
+// by the reader, so the size difference costs nothing worth a Box.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, PartialEq)]
 pub enum Item {
     /// A `<url>` of a `<urlset>`.
@@ -147,6 +155,12 @@ pub struct InspectReport {
     pub with_alternates: u64,
     /// Valid entries with at least one image.
     pub with_images: u64,
+    /// Valid entries with at least one video.
+    pub with_videos: u64,
+    /// Valid entries with news metadata.
+    pub with_news: u64,
+    /// `<news:news>` elements found (Google allows 1,000 per file).
+    pub news_elements: u64,
     /// Elements of namespaces the reader does not model (for example video
     /// or news), by namespace URI. They are skipped, not validated.
     pub unsupported_extensions: BTreeMap<String, u64>,
@@ -273,6 +287,10 @@ enum Field {
     Priority,
     ImageLoc,
     Video(VideoField),
+    NewsName,
+    NewsLanguage,
+    NewsPublicationDate,
+    NewsTitle,
 }
 
 /// Children of `video:video` that are read. Tags Google removed in 2022
@@ -365,6 +383,10 @@ impl Field {
             Field::Priority => "priority",
             Field::ImageLoc => "image:loc",
             Field::Video(field) => field.name(),
+            Field::NewsName => "news:name",
+            Field::NewsLanguage => "news:language",
+            Field::NewsPublicationDate => "news:publication_date",
+            Field::NewsTitle => "news:title",
         }
     }
 }
@@ -385,6 +407,10 @@ struct EntryBuilder {
     video_attribute: Option<String>,
     /// A value could not be read (reported by the reader, not the validator).
     read_error: bool,
+    /// Inside `<news:news>`.
+    news: Option<RawNews>,
+    /// Inside `<news:publication>`.
+    in_publication: bool,
 }
 
 /// Why reading stopped.
@@ -804,6 +830,29 @@ impl<'o, F: FnMut(Item)> State<'o, F> {
             (DocumentKind::Urlset, VIDEO_NS, "video") => {
                 entry.video = Some(RawVideo::default());
             }
+            (DocumentKind::Urlset, NEWS_NS, "news") => {
+                if entry.news.is_some() || entry.raw.news.is_some() {
+                    self.skip = Some(depth);
+                    self.warn(
+                        DiagnosticCode::XmlUnexpectedElement,
+                        "only one <news:news> is allowed per <url>; the others are ignored"
+                            .to_owned(),
+                        Some("news:news"),
+                    );
+                    return;
+                }
+                entry.news = Some(RawNews::default());
+                self.report.news_elements += 1;
+                if self.report.news_elements == u64::from(MAX_NEWS_PER_SITEMAP) + 1 {
+                    self.report.diagnostics.push(Diagnostic::new(
+                        DiagnosticCode::NewsLimitExceeded,
+                        format!(
+                            "more than {MAX_NEWS_PER_SITEMAP} <news:news> elements in one file"
+                        ),
+                        Location::default(),
+                    ));
+                }
+            }
             _ => {
                 self.count_extension(ns);
                 self.skip = Some(depth);
@@ -828,6 +877,32 @@ impl<'o, F: FnMut(Item)> State<'o, F> {
                     entry.video_attribute = value;
                 }
                 self.field = Some((Field::Video(field), depth));
+                self.text.clear();
+                return;
+            }
+        }
+        let (in_news, in_publication) = self
+            .entry
+            .as_ref()
+            .map_or((false, false), |e| (e.news.is_some(), e.in_publication));
+        if in_news && self.field.is_none() && ns == NEWS_NS {
+            let field = match (depth, local, in_publication) {
+                (4, "publication", false) => {
+                    if let Some(entry) = self.entry.as_mut() {
+                        entry.in_publication = true;
+                    }
+                    return;
+                }
+                (4, "publication_date", false) => Some(Field::NewsPublicationDate),
+                (4, "title", false) => Some(Field::NewsTitle),
+                (5, "name", true) => Some(Field::NewsName),
+                (5, "language", true) => Some(Field::NewsLanguage),
+                // access, genres, keywords, stock_tickers: in the schema but
+                // no longer documented by Google; skipped.
+                _ => None,
+            };
+            if let Some(field) = field {
+                self.field = Some((field, depth));
                 self.text.clear();
                 return;
             }
@@ -879,6 +954,16 @@ impl<'o, F: FnMut(Item)> State<'o, F> {
                     }
                 }
             }
+            4 if ns == NEWS_NS && local == "publication" => {
+                if let Some(entry) = self.entry.as_mut() {
+                    entry.in_publication = false;
+                }
+            }
+            3 if ns == NEWS_NS && local == "news" => {
+                if let Some(entry) = self.entry.as_mut() {
+                    entry.raw.news = entry.news.take();
+                }
+            }
             3 if ns == VIDEO_NS && local == "video" => {
                 if let Some(entry) = self.entry.as_mut() {
                     if let Some(video) = entry.video.take() {
@@ -913,6 +998,28 @@ impl<'o, F: FnMut(Item)> State<'o, F> {
             Field::ImageLoc => {
                 if let Some(image) = entry.image.as_mut() {
                     *image = Some(value.to_owned());
+                }
+            }
+            Field::NewsName | Field::NewsLanguage => {
+                if let Some(news) = entry.news.as_mut() {
+                    let publication = news
+                        .publication
+                        .get_or_insert_with(RawNewsPublication::default);
+                    if field == Field::NewsName {
+                        publication.name = Some(value.to_owned());
+                    } else {
+                        publication.language = Some(value.to_owned());
+                    }
+                }
+            }
+            Field::NewsPublicationDate => {
+                if let Some(news) = entry.news.as_mut() {
+                    news.publication_date = Some(value.to_owned());
+                }
+            }
+            Field::NewsTitle => {
+                if let Some(news) = entry.news.as_mut() {
+                    news.title = Some(value.to_owned());
                 }
             }
             Field::Video(video_field) => {
@@ -1003,6 +1110,8 @@ impl<'o, F: FnMut(Item)> State<'o, F> {
                 self.report.with_lastmod += u64::from(url.lastmod.is_some());
                 self.report.with_alternates += u64::from(!url.alternates.is_empty());
                 self.report.with_images += u64::from(!url.images.is_empty());
+                self.report.with_videos += u64::from(!url.videos.is_empty());
+                self.report.with_news += u64::from(url.news.is_some());
             }
             Item::Sitemap(sitemap) => {
                 self.report.with_lastmod += u64::from(sitemap.lastmod.is_some());

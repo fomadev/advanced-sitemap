@@ -23,7 +23,7 @@ JSON Schemas (draft 2020-12) are in [`schemas/`](../../schemas).
   "referenceTime": "2026-11-21T00:00:00Z",
   "validation": { "mode": "standard", "onInvalid": "fail", "dedupe": true, "maxDiagnostics": 1000 },
   "partitioning": { "strategy": "sequential", "maxUrls": 50000, "maxBytes": 52428800 },
-  "output": { "directory": "dist", "fileStem": "sitemap", "index": "auto", "manifest": true, "extensions": ["video"] },
+  "output": { "directory": "dist", "fileStem": "sitemap", "index": "auto", "manifest": true, "extensions": ["video", "news"] },
   "source": { "format": "jsonl", "path": "urls.jsonl", "maxLineBytes": 1048576 }
 }
 ```
@@ -45,7 +45,7 @@ JSON Schemas (draft 2020-12) are in [`schemas/`](../../schemas).
 | `output.fileStem` | `sitemap` | `[A-Za-z0-9_-]`, 1 to 64 characters |
 | `output.index` | `auto` | `auto`, `always` or `never` |
 | `output.manifest` | `true` | Write `<stem>.manifest.json` |
-| `output.extensions` | `[]` | Since 1.1. Extra namespaces declared on every file: `video`. `xhtml` and `image` are always declared. A record using an undeclared extension gets `EXTENSION_NOT_DECLARED` |
+| `output.extensions` | `[]` | Since 1.1. Extra namespaces declared on every file: `video`, `news`. `xhtml` and `image` are always declared. A record using an undeclared extension gets `EXTENSION_NOT_DECLARED` |
 | `source` / `urls` | none | A file, or inline records. The two are mutually exclusive |
 
 ## URL record
@@ -119,6 +119,36 @@ Google's video sitemap documentation and its `sitemap-video/1.1` XSD:
 - `category`, `gallery_loc`, `price`, `tvshow` and the `player_loc`
   attributes `allow_embed` and `autoplay` are not supported: Google removed
   them from its documentation in 2022.
+
+### News (since 1.1)
+
+```json
+{
+  "loc": "https://www.example.org/business/article55.html",
+  "news": {
+    "publication": { "name": "The Example Times", "language": "en" },
+    "publicationDate": "2026-11-20T19:20:30+01:00",
+    "title": "Companies A, B in Merger Talks"
+  }
+}
+```
+
+The configuration must list `"news"` in `output.extensions`. Rules follow
+Google's news sitemap documentation and its `sitemap-news/0.9` XSD:
+
+- All four values are required. `name` must match the publication name on
+  Google News, without anything in parentheses (not checkable by the
+  engine).
+- `language` is an ISO 639 code of two or three letters, or `zh-cn` /
+  `zh-tw`. It is written in lowercase (the XSD pattern). Regional codes such
+  as `en-gb` are refused.
+- At most 1,000 news entries per file. The `sequential` strategy starts a
+  new file at the 1,001st news entry; `stable-hash` fails with
+  `PARTITION_LIMIT_EXCEEDED` (raise `partitions`).
+- With `referenceTime`, an article older than two days gets `NEWS_TOO_OLD`
+  (warning): Google News only uses articles from the last two days.
+- `access`, `genres`, `keywords` and `stock_tickers` exist in the XSD but
+  are no longer in Google's documentation; they are not supported.
 
 ## Report
 

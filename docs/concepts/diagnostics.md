@@ -82,9 +82,15 @@ practice is not followed. `info` is informational.
 | `VIDEO_UPLOADER_HOST_MISMATCH` | warning | `uploader.info` is not on the host of `loc` |
 | `VIDEO_TAG_LIMIT_EXCEEDED` | error | More than 32 tags |
 | `VIDEO_VALUE_INVALID` | error | `inspect` only: a number or `yes`/`no` value cannot be read |
+| `NEWS_TEXT_INVALID` | error | Empty publication name or title |
+| `NEWS_LANGUAGE_INVALID` | error | Language is not two or three letters, `zh-cn` or `zh-tw` |
+| `NEWS_DATE_INVALID` | error | `publicationDate` is not a W3C Datetime |
+| `NEWS_TOO_OLD` | warning | Article older than two days at `referenceTime` |
+| `NEWS_LIMIT_EXCEEDED` | error | `inspect` only: more than 1,000 `news:news` in one file |
 
-A missing required video field is reported as `REQUIRED_FIELD_MISSING` with
-a path such as `videos[0].title`. URL problems in video fields use the
+A missing required video or news field is reported as
+`REQUIRED_FIELD_MISSING` with a path such as `videos[0].title` or
+`news.publication.language`. URL problems in video fields use the
 `URL_*` codes.
 
 ## Reading existing files (`inspect`)

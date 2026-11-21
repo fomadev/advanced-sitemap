@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "1.1",
+  "referenceTime": "2026-11-21T12:00:00Z",
+  "output": { "manifest": false, "extensions": ["news"] },
+  "urls": [
+    {
+      "loc": "https://www.example.org/business/article55.html",
+      "news": {
+        "publication": { "name": "The Example Times", "language": "EN" },
+        "publicationDate": "2026-11-20T19:20:30+01:00",
+        "title": "Companies A, B & C in Merger Talks"
+      }
+    },
+    {
+      "loc": "https://www.example.org/zh/article56.html",
+      "news": {
+        "publication": { "name": "The Example Times", "language": "zh-TW" },
+        "publicationDate": "2026-11-21",
+        "title": "公司 A 和 B 正在進行合併談判"
+      }
+    },
+    { "loc": "https://www.example.org/about" }
+  ]
+}

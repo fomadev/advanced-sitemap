@@ -16,7 +16,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["path", "kind", "compressed", "xmlBytes", "complete", "entries", "validEntries", "duplicates", "withLastmod", "withAlternates", "withImages", "unsupportedExtensions", "severityCounts", "diagnostics"],
+        "required": ["path", "kind", "compressed", "xmlBytes", "complete", "entries", "validEntries", "duplicates", "withLastmod", "withAlternates", "withImages", "withVideos", "withNews", "newsElements", "unsupportedExtensions", "severityCounts", "diagnostics"],
         "properties": {
           "path": { "type": "string", "description": "File path, or - for standard input" },
           "kind": { "enum": ["urlset", "sitemapindex", null] },
@@ -29,6 +29,9 @@
           "withLastmod": { "type": "integer" },
           "withAlternates": { "type": "integer" },
           "withImages": { "type": "integer" },
+          "withVideos": { "type": "integer" },
+          "withNews": { "type": "integer" },
+          "newsElements": { "type": "integer", "description": "news:news elements found; Google allows 1,000 per file" },
           "unsupportedExtensions": {
             "type": "object",
             "description": "Skipped elements of namespaces that are not validated, by namespace URI",

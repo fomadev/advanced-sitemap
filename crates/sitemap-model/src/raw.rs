@@ -51,6 +51,12 @@ pub struct RawUrlRecord {
         serde(default, skip_serializing_if = "Vec::is_empty")
     )]
     pub videos: Vec<RawVideo>,
+    /// News article metadata (Google News extension).
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub news: Option<RawNews>,
 }
 
 impl RawUrlRecord {
@@ -262,4 +268,54 @@ pub struct RawVideoUploader {
         serde(default, skip_serializing_if = "Option::is_none")
     )]
     pub info: Option<String>,
+}
+
+/// Unchecked news article metadata (Google News extension).
+#[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(deny_unknown_fields, rename_all = "camelCase")
+)]
+pub struct RawNews {
+    /// Publication (required).
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub publication: Option<RawNewsPublication>,
+    /// W3C Datetime of first publication (required).
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub publication_date: Option<String>,
+    /// Article title (required).
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub title: Option<String>,
+}
+
+/// Unchecked `news:publication`.
+#[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(deny_unknown_fields, rename_all = "camelCase")
+)]
+pub struct RawNewsPublication {
+    /// Publication name, as shown on Google News (required).
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub name: Option<String>,
+    /// ISO 639 language code, or `zh-cn` / `zh-tw` (required).
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub language: Option<String>,
 }

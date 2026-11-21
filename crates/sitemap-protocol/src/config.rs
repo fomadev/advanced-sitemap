@@ -224,6 +224,8 @@ pub struct OutputSection {
 pub enum ExtensionSetting {
     /// Google video extension (`xmlns:video`).
     Video,
+    /// Google News extension (`xmlns:news`).
+    News,
 }
 
 impl Default for OutputSection {

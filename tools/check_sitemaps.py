@@ -25,6 +25,7 @@ SM = "http://www.sitemaps.org/schemas/sitemap/0.9"
 XHTML = "http://www.w3.org/1999/xhtml"
 IMAGE = "http://www.google.com/schemas/sitemap-image/1.1"
 VIDEO = "http://www.google.com/schemas/sitemap-video/1.1"
+NEWS = "http://www.google.com/schemas/sitemap-news/0.9"
 
 MAX_URLS = 50_000
 MAX_BYTES = 52_428_800
@@ -113,6 +114,8 @@ def check_extension(el: ET.Element, ns: str, local: str, where: str, errors: lis
             check_loc(locs[0].text, f"{where} image:loc", errors)
     elif ns == VIDEO and local == "video":
         check_video(el, where, errors)
+    elif ns == NEWS and local == "news":
+        check_news(el, where, errors)
     else:
         errors.append(f"{where}: unexpected extension element {{{ns}}}{local}")
 
@@ -125,6 +128,30 @@ VIDEO_ORDER = [
     "restriction", "requires_subscription", "uploader", "platform", "live",
 ]
 YES_NO = {"yes", "no"}
+
+
+def check_news(el: ET.Element, where: str, errors: list[str]) -> None:
+    """Google News: publication(name, language), publication_date, title, in this order."""
+    where = f"{where} news"
+    names = [split(c.tag) for c in el]
+    expected = [(NEWS, "publication"), (NEWS, "publication_date"), (NEWS, "title")]
+    if names != expected:
+        errors.append(f"{where}: children must be publication, publication_date, title; got {[n for _, n in names]}")
+        return
+    publication, date, title = list(el)
+    parts = [split(c.tag) for c in publication]
+    if parts != [(NEWS, "name"), (NEWS, "language")]:
+        errors.append(f"{where}: publication must contain name then language")
+    else:
+        name, language = list(publication)
+        if not (name.text or "").strip():
+            errors.append(f"{where}: publication name is empty")
+        if not re.fullmatch(r"zh-cn|zh-tw|[a-z]{2,3}", language.text or ""):
+            errors.append(f"{where}: language {language.text!r} does not match zh-cn|zh-tw|[a-z]{{2,3}}")
+    if not W3C_DATETIME.match(date.text or ""):
+        errors.append(f"{where}: publication_date {date.text!r} is not a W3C Datetime")
+    if not (title.text or "").strip():
+        errors.append(f"{where}: title is empty")
 
 
 def check_video(el: ET.Element, where: str, errors: list[str]) -> None:
@@ -214,6 +241,9 @@ def check_file(path: Path) -> list[str]:
         urls = list(root)
         if len(urls) > MAX_URLS:
             errors.append(f"{len(urls)} <url> elements, above {MAX_URLS}")
+        news = sum(1 for u in urls for c in u if c.tag == f"{{{NEWS}}}news")
+        if news > 1000:
+            errors.append(f"{news} <news:news> elements, above 1000")
         for i, url in enumerate(urls, 1):
             if url.tag != f"{{{SM}}}url":
                 errors.append(f"child {i} of <urlset> is not <url>")

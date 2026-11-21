@@ -484,8 +484,8 @@ fn print_inspection(file: &FileInspection) {
         file.entries, file.valid_entries, file.duplicates
     );
     println!(
-        "  Fields       {} with lastmod, {} with alternates, {} with images",
-        file.with_lastmod, file.with_alternates, file.with_images
+        "  Fields       {} with lastmod, {} with alternates, {} with images, {} with videos, {} with news",
+        file.with_lastmod, file.with_alternates, file.with_images, file.with_videos, file.with_news
     );
     for (namespace, count) in &file.unsupported_extensions {
         println!("  Not checked  {count} elements of {namespace}");

@@ -161,6 +161,10 @@ pub fn resolve_config(doc: ConfigDocument, base_dir: &Path) -> Result<ResolvedCo
                     video: true,
                     ..Namespaces::NONE
                 }),
+                ExtensionSetting::News => acc.union(Namespaces {
+                    news: true,
+                    ..Namespaces::NONE
+                }),
             }),
     };
 
