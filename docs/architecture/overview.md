@@ -37,11 +37,16 @@ sitemap-model ◀── sitemap-validation ◀──┐
               └────────────────────────────────────┘
 ```
 
-Les crates de la cible conceptuelle non encore créées (`sitemap-extensions`,
-`sitemap-lifecycle`, `sitemap-planner`, `sitemap-robots`, `sitemap-indexnow`,
-`sitemap-plugin-api`, `sitemap-ffi`, `sitemap-inspect`, bindings) le seront
-quand leur interface sera stable. Le planificateur vit pour l'instant dans
-`advanced-sitemap::plan`.
+Les crates de la cible conceptuelle non encore créées (`sitemap-lifecycle`,
+`sitemap-planner`, `sitemap-indexnow`, `sitemap-plugin-api`, `sitemap-ffi`,
+bindings) le seront quand leur interface sera stable. Les extensions vidéo
+et news vivent dans `sitemap-model` et `sitemap-validation`, la lecture dans
+`sitemap-reader`, robots.txt dans `sitemap-robots`. Le planificateur vit pour
+l'instant dans `advanced-sitemap::plan`.
+
+La conception du Lifecycle Engine (snapshot, diff, génération incrémentale,
+partitionnement stable, planner, explain) est dans
+[lifecycle/](lifecycle/README.md), avec ses invariants et ses phases.
 
 ## Pipeline
 
