@@ -40,6 +40,7 @@
 
 mod config;
 mod engine;
+mod hreflang;
 pub mod inspect;
 mod manifest;
 pub mod plan;
