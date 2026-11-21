@@ -24,6 +24,7 @@ from urllib.parse import urlsplit
 SM = "http://www.sitemaps.org/schemas/sitemap/0.9"
 XHTML = "http://www.w3.org/1999/xhtml"
 IMAGE = "http://www.google.com/schemas/sitemap-image/1.1"
+VIDEO = "http://www.google.com/schemas/sitemap-video/1.1"
 
 MAX_URLS = 50_000
 MAX_BYTES = 52_428_800
@@ -110,8 +111,82 @@ def check_extension(el: ET.Element, ns: str, local: str, where: str, errors: lis
             errors.append(f"{where}: image:image must contain exactly one image:loc")
         else:
             check_loc(locs[0].text, f"{where} image:loc", errors)
+    elif ns == VIDEO and local == "video":
+        check_video(el, where, errors)
     else:
         errors.append(f"{where}: unexpected extension element {{{ns}}}{local}")
+
+
+# Order of Google's sitemap-video/1.1 XSD sequence, restricted to the
+# elements Google still documents.
+VIDEO_ORDER = [
+    "thumbnail_loc", "title", "description", "content_loc", "player_loc", "duration",
+    "expiration_date", "rating", "view_count", "publication_date", "tag", "family_friendly",
+    "restriction", "requires_subscription", "uploader", "platform", "live",
+]
+YES_NO = {"yes", "no"}
+
+
+def check_video(el: ET.Element, where: str, errors: list[str]) -> None:
+    where = f"{where} video"
+    names = []
+    for child in el:
+        ns, local = split(child.tag)
+        if ns != VIDEO or local not in VIDEO_ORDER:
+            errors.append(f"{where}: unexpected element {{{ns}}}{local}")
+            continue
+        names.append(local)
+    positions = [VIDEO_ORDER.index(n) for n in names]
+    if positions != sorted(positions):
+        errors.append(f"{where}: children are not in the XSD order")
+    for n in set(names):
+        if n != "tag" and names.count(n) > 1:
+            errors.append(f"{where}: <video:{n}> is repeated")
+    if names.count("tag") > 32:
+        errors.append(f"{where}: more than 32 tags")
+    for required in ("thumbnail_loc", "title", "description"):
+        if required not in names:
+            errors.append(f"{where}: <video:{required}> is missing")
+    if "content_loc" not in names and "player_loc" not in names:
+        errors.append(f"{where}: needs content_loc or player_loc")
+    for child in el:
+        local = split(child.tag)[1]
+        text = child.text or ""
+        if local in ("thumbnail_loc", "content_loc", "player_loc"):
+            check_loc(child.text, f"{where} {local}", errors)
+        elif local in ("title", "description") and not text.strip():
+            errors.append(f"{where}: <video:{local}> is empty")
+        elif local == "title" and len(text) > 100:
+            errors.append(f"{where}: title longer than 100 characters (XSD)")
+        elif local == "description" and len(text) > 2048:
+            errors.append(f"{where}: description longer than 2048 characters")
+        elif local == "duration" and not (text.isdigit() and 1 <= int(text) <= 28800):
+            errors.append(f"{where}: duration {text!r} not in 1..28800")
+        elif local == "rating" and not re.fullmatch(r"[0-5](\.\d+)?", text):
+            errors.append(f"{where}: rating {text!r} not in 0.0..5.0")
+        elif local == "rating" and float(text) > 5:
+            errors.append(f"{where}: rating {text!r} above 5.0")
+        elif local == "view_count" and not text.isdigit():
+            errors.append(f"{where}: view_count {text!r} is not an integer")
+        elif local in ("expiration_date", "publication_date") and not W3C_DATETIME.match(text):
+            errors.append(f"{where}: {local} {text!r} is not a W3C Datetime")
+        elif local in ("family_friendly", "requires_subscription", "live") and text not in YES_NO:
+            errors.append(f"{where}: {local} must be yes or no")
+        elif local == "restriction":
+            if child.get("relationship") not in ("allow", "deny"):
+                errors.append(f"{where}: restriction relationship must be allow or deny")
+            if not re.fullmatch(r"([A-Z]{2}( +[A-Z]{2})*)?", text):
+                errors.append(f"{where}: restriction {text!r} is not a list of country codes")
+        elif local == "platform":
+            if child.get("relationship") not in ("allow", "deny"):
+                errors.append(f"{where}: platform relationship must be allow or deny")
+            if not re.fullmatch(r"((web|mobile|tv)( (web|mobile|tv))*)?", text):
+                errors.append(f"{where}: platform {text!r} is not a list of web, mobile, tv")
+        elif local == "uploader":
+            if not 1 <= len(text) <= 255:
+                errors.append(f"{where}: uploader must have 1 to 255 characters")
+            if child.get("info") is not None:
+                check_loc(child.get("info"), f"{where} uploader info", errors)
 
 
 def check_file(path: Path) -> list[str]:
