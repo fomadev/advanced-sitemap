@@ -17,6 +17,7 @@ mod diagnostic;
 mod entry;
 mod hreflang;
 pub mod limits;
+mod news;
 mod raw;
 mod scalar;
 mod sitemap_url;
@@ -26,9 +27,10 @@ pub use datetime::{DateTimeError, DateTimePrecision, W3cDateTime};
 pub use diagnostic::{Diagnostic, DiagnosticCode, Location, Severity};
 pub use entry::{Alternate, Image, IndexEntry, UrlEntry};
 pub use hreflang::{LanguageTag, LanguageTagError};
+pub use news::{News, NewsLanguage};
 pub use raw::{
-    RawAlternate, RawImage, RawUrlRecord, RawVideo, RawVideoPlatform, RawVideoRestriction,
-    RawVideoUploader,
+    RawAlternate, RawImage, RawNews, RawNewsPublication, RawUrlRecord, RawVideo, RawVideoPlatform,
+    RawVideoRestriction, RawVideoUploader,
 };
 pub use scalar::{ChangeFreq, ChangeFreqError, Priority, PriorityError};
 pub use sitemap_url::{SitemapUrl, UrlError};

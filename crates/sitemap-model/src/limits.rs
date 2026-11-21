@@ -32,3 +32,9 @@ pub const MAX_VIDEO_DURATION_SECONDS: u32 = 28_800;
 
 /// Maximum length of `<video:uploader>`, in characters (Google).
 pub const MAX_VIDEO_UPLOADER_CHARS: usize = 255;
+
+/// Maximum number of `<news:news>` elements in one sitemap file (Google).
+pub const MAX_NEWS_PER_SITEMAP: u32 = 1_000;
+
+/// Google News only uses articles published in the last two days, in seconds.
+pub const NEWS_MAX_AGE_SECONDS: i64 = 2 * 24 * 3600;

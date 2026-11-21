@@ -175,6 +175,16 @@ diagnostic_codes! {
     VideoTagLimitExceeded => "VIDEO_TAG_LIMIT_EXCEEDED", Error;
     /// A video value in an inspected document cannot be read (not a number, not yes/no).
     VideoValueInvalid => "VIDEO_VALUE_INVALID", Error;
+    /// A news publication name or title is empty.
+    NewsTextInvalid => "NEWS_TEXT_INVALID", Error;
+    /// A news language is not a two- or three-letter ISO 639 code, `zh-cn` or `zh-tw`.
+    NewsLanguageInvalid => "NEWS_LANGUAGE_INVALID", Error;
+    /// A news publication date is not a W3C Datetime.
+    NewsDateInvalid => "NEWS_DATE_INVALID", Error;
+    /// A news article is older than two days at the reference time; Google News ignores it.
+    NewsTooOld => "NEWS_TOO_OLD", Warning;
+    /// A sitemap file contains more than 1,000 `<news:news>` elements.
+    NewsLimitExceeded => "NEWS_LIMIT_EXCEEDED", Error;
 }
 
 impl fmt::Display for DiagnosticCode {

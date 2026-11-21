@@ -1,4 +1,4 @@
-use crate::{ChangeFreq, LanguageTag, Priority, SitemapUrl, Video, W3cDateTime};
+use crate::{ChangeFreq, LanguageTag, News, Priority, SitemapUrl, Video, W3cDateTime};
 
 /// An alternate language version of a page (`<xhtml:link rel="alternate">`).
 #[derive(Clone, Debug, PartialEq)]
@@ -40,6 +40,8 @@ pub struct UrlEntry {
     pub images: Vec<Image>,
     /// `<video:video>` elements, in input order.
     pub videos: Vec<Video>,
+    /// `<news:news>` (at most one per URL).
+    pub news: Option<News>,
 }
 
 impl UrlEntry {
@@ -53,6 +55,7 @@ impl UrlEntry {
             alternates: Vec::new(),
             images: Vec::new(),
             videos: Vec::new(),
+            news: None,
         }
     }
 
@@ -89,6 +92,12 @@ impl UrlEntry {
     /// Appends a video.
     pub fn with_video(mut self, video: Video) -> Self {
         self.videos.push(video);
+        self
+    }
+
+    /// Sets the news article metadata.
+    pub fn with_news(mut self, news: News) -> Self {
+        self.news = Some(news);
         self
     }
 }
