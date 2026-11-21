@@ -1,0 +1,15 @@
+[package]
+name = "sitemap-snapshot"
+description = "URL-level snapshots of a publication and the diff between two snapshots."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+blake3.workspace = true
+
+[lints]
+workspace = true
