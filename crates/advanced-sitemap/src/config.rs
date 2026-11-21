@@ -7,11 +7,12 @@ use sitemap_index::{IndexMode, Layout, PartitionLimits, PartitionStrategy, Publi
 use sitemap_model::limits::{MAX_SITEMAP_BYTES, MAX_URLS_PER_SITEMAP};
 use sitemap_model::{SitemapUrl, W3cDateTime};
 use sitemap_protocol::{
-    ConfigDocument, DEFAULT_MAX_DOCUMENT_BYTES, DEFAULT_MAX_LINE_BYTES, IndexSetting,
-    InvalidPolicySetting, JsonArrayReader, JsonlReader, SourceFormat, SourceRecord,
+    ConfigDocument, DEFAULT_MAX_DOCUMENT_BYTES, DEFAULT_MAX_LINE_BYTES, ExtensionSetting,
+    IndexSetting, InvalidPolicySetting, JsonArrayReader, JsonlReader, SourceFormat, SourceRecord,
     StrategySetting, ValidationModeSetting,
 };
 use sitemap_validation::{ValidationMode, ValidationOptions};
+use sitemap_xml::Namespaces;
 
 use crate::engine::{EngineConfig, EngineError, InvalidPolicy};
 
@@ -151,6 +152,16 @@ pub fn resolve_config(doc: ConfigDocument, base_dir: &Path) -> Result<ResolvedCo
             public_base_url,
         },
         manifest: doc.output.manifest,
+        namespaces: doc
+            .output
+            .extensions
+            .iter()
+            .fold(Namespaces::DEFAULT, |acc, extension| match extension {
+                ExtensionSetting::Video => acc.union(Namespaces {
+                    video: true,
+                    ..Namespaces::NONE
+                }),
+            }),
     };
 
     Ok(ResolvedConfig {

@@ -12,7 +12,7 @@ use sitemap_index::{IndexMode, PartitionStrategy};
 use sitemap_model::Location;
 use sitemap_protocol::SourceFormat;
 use sitemap_validation::{ValidationMode, Validator};
-use sitemap_xml::{Namespaces, URLSET_FOOTER, encode_url, urlset_header};
+use sitemap_xml::{URLSET_FOOTER, encode_url, urlset_header};
 
 use crate::config::{InputSpec, ResolvedConfig, open_input};
 use crate::engine::{EngineError, InvalidPolicy};
@@ -247,7 +247,7 @@ pub fn explain(resolved: &ResolvedConfig, sample_size: usize) -> Result<Plan, En
         (None, _) => Quantity::Unknown,
     };
 
-    let header = urlset_header(Namespaces::ALL).len() as u64;
+    let header = urlset_header(config.namespaces).len() as u64;
     let footer = URLSET_FOOTER.len() as u64;
     let room = config.limits.max_bytes().saturating_sub(header + footer);
     let max_urls = u64::from(config.limits.max_urls());

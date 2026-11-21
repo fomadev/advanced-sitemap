@@ -57,6 +57,10 @@ pub struct EngineConfig {
     pub layout: Layout,
     /// Publish `<stem>.manifest.json`.
     pub manifest: bool,
+    /// Extension namespaces declared on every sitemap file. Entries that use
+    /// another extension are rejected with `EXTENSION_NOT_DECLARED`.
+    /// Default: [`Namespaces::DEFAULT`] (`xhtml` and `image`).
+    pub namespaces: Namespaces,
 }
 
 impl Default for EngineConfig {
@@ -74,6 +78,7 @@ impl Default for EngineConfig {
                 public_base_url: None,
             },
             manifest: true,
+            namespaces: Namespaces::DEFAULT,
         }
     }
 }
@@ -255,13 +260,13 @@ impl Engine {
         let mut scratch = Vec::new();
         let fail_fast = self.config.on_invalid == InvalidPolicy::Fail;
 
-        // Every file declares all supported extension namespaces: the content
-        // of a streamed source is not known in advance.
+        // Every file declares the configured extension namespaces: the
+        // content of a streamed source is not known in advance.
         let mut partitioner = Partitioner::new(
             store,
             self.config.strategy,
             self.config.limits,
-            Namespaces::ALL,
+            self.config.namespaces,
             &self.config.layout.stem,
         );
         let mut writing = true;
@@ -300,6 +305,34 @@ impl Engine {
                 }
             };
 
+            let entry = entry.filter(|entry| {
+                let missing = self
+                    .config
+                    .namespaces
+                    .missing(Namespaces::required_by(entry));
+                if missing.is_empty() {
+                    return true;
+                }
+                collector.push(
+                    Diagnostic::new(
+                        DiagnosticCode::ExtensionNotDeclared,
+                        format!(
+                            "the entry uses the {} extension, which is not declared",
+                            missing.join(", ")
+                        ),
+                        location.clone(),
+                    )
+                    .with_suggestion(format!(
+                        "Add {} to output.extensions in the configuration.",
+                        missing
+                            .iter()
+                            .map(|p| format!("\"{p}\""))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )),
+                );
+                false
+            });
             let Some(entry) = entry else {
                 stats.invalid_records += 1;
                 if fail_fast {
