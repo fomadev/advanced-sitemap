@@ -1,0 +1,21 @@
+[package]
+name = "sitemap-model"
+description = "Validated data model, raw records and diagnostics for the Advanced Sitemap engine."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+default = []
+# Serde support for raw records (deserialize) and diagnostics (serialize).
+serde = ["dep:serde"]
+
+[dependencies]
+url.workspace = true
+serde = { workspace = true, optional = true }
+
+[lints]
+workspace = true
