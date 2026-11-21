@@ -18,6 +18,7 @@ sitemap-storage = { path = "crates/sitemap-storage" }
 sitemap-index = { path = "crates/sitemap-index" }
 sitemap-protocol = { path = "crates/sitemap-protocol" }
 sitemap-reader = { path = "crates/sitemap-reader" }
+sitemap-robots = { path = "crates/sitemap-robots" }
 advanced-sitemap = { path = "crates/advanced-sitemap" }
 
 url = "2.5.9"

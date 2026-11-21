@@ -1,0 +1,19 @@
+[package]
+name = "sitemap-robots"
+description = "Validated, deterministic robots.txt generation (RFC 9309) with Sitemap records."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+serde = ["dep:serde"]
+
+[dependencies]
+sitemap-model.workspace = true
+serde = { workspace = true, optional = true }
+
+[lints]
+workspace = true
