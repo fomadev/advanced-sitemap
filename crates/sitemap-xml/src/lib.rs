@@ -9,7 +9,7 @@
 use std::fmt;
 use std::io::{self, Write};
 
-use sitemap_model::{IndexEntry, UrlEntry, Video};
+use sitemap_model::{IndexEntry, News, UrlEntry, Video};
 
 /// The XML declaration that starts every document.
 pub const XML_DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
@@ -21,6 +21,8 @@ pub const XHTML_NS: &str = "http://www.w3.org/1999/xhtml";
 pub const IMAGE_NS: &str = "http://www.google.com/schemas/sitemap-image/1.1";
 /// Namespace of Google's video extension.
 pub const VIDEO_NS: &str = "http://www.google.com/schemas/sitemap-video/1.1";
+/// Namespace of Google's news extension.
+pub const NEWS_NS: &str = "http://www.google.com/schemas/sitemap-news/0.9";
 /// Closing tag of a `<urlset>` document.
 pub const URLSET_FOOTER: &str = "</urlset>\n";
 /// Closing tag of a `<sitemapindex>` document.
@@ -85,6 +87,8 @@ pub struct Namespaces {
     pub image: bool,
     /// `xmlns:video`, required by videos.
     pub video: bool,
+    /// `xmlns:news`, required by news metadata.
+    pub news: bool,
 }
 
 impl Namespaces {
@@ -93,6 +97,7 @@ impl Namespaces {
         xhtml: false,
         image: false,
         video: false,
+        news: false,
     };
     /// The namespaces the engine declares by default on every streamed
     /// file: `xhtml` and `image`. Other extensions are declared on demand
@@ -101,12 +106,14 @@ impl Namespaces {
         xhtml: true,
         image: true,
         video: false,
+        news: false,
     };
     /// Every extension supported by this version.
     pub const ALL: Namespaces = Namespaces {
         xhtml: true,
         image: true,
         video: true,
+        news: true,
     };
 
     /// Namespaces needed by one entry.
@@ -115,6 +122,7 @@ impl Namespaces {
             xhtml: !entry.alternates.is_empty(),
             image: !entry.images.is_empty(),
             video: !entry.videos.is_empty(),
+            news: entry.news.is_some(),
         }
     }
 
@@ -129,6 +137,9 @@ impl Namespaces {
         }
         if needed.video && !self.video {
             prefixes.push("video");
+        }
+        if needed.news && !self.news {
+            prefixes.push("news");
         }
         prefixes
     }
@@ -146,6 +157,7 @@ impl Namespaces {
             xhtml: self.xhtml || other.xhtml,
             image: self.image || other.image,
             video: self.video || other.video,
+            news: self.news || other.news,
         }
     }
 
@@ -178,6 +190,11 @@ pub fn urlset_header(namespaces: Namespaces) -> String {
     if namespaces.video {
         header.push_str(" xmlns:video=\"");
         header.push_str(VIDEO_NS);
+        header.push('"');
+    }
+    if namespaces.news {
+        header.push_str(" xmlns:news=\"");
+        header.push_str(NEWS_NS);
         header.push('"');
     }
     header.push_str(">\n");
@@ -262,7 +279,27 @@ pub fn encode_url(entry: &UrlEntry, out: &mut Vec<u8>) -> Result<(), XmlError> {
     for video in &entry.videos {
         encode_video(video, out)?;
     }
+    if let Some(news) = &entry.news {
+        encode_news(news, out)?;
+    }
     out.extend_from_slice(b"  </url>\n");
+    Ok(())
+}
+
+/// Writes `<news:news>` in the order of Google's `sitemap-news/0.9` XSD.
+fn encode_news(news: &News, out: &mut Vec<u8>) -> Result<(), XmlError> {
+    out.extend_from_slice(b"    <news:news>\n      <news:publication>\n");
+    element(out, "        ", "news:name", &news.publication_name)?;
+    element(out, "        ", "news:language", news.language.as_str())?;
+    out.extend_from_slice(b"      </news:publication>\n");
+    element(
+        out,
+        "      ",
+        "news:publication_date",
+        news.publication_date.as_str(),
+    )?;
+    element(out, "      ", "news:title", &news.title)?;
+    out.extend_from_slice(b"    </news:news>\n");
     Ok(())
 }
 
