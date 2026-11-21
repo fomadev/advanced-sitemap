@@ -9,6 +9,7 @@ advanced-sitemap [--format human|json] <generate|validate|explain> [options]
 | `generate` | Validates the input and publishes sitemap files into the output directory |
 | `validate` | Runs the same pipeline with a store that keeps nothing; writes no file |
 | `explain` | Samples the input and describes what `generate` would do; writes no file |
+| `inspect` | Reads existing sitemap or sitemap index files (plain or gzip) and checks them; writes no file |
 
 ## Input
 
@@ -45,8 +46,43 @@ Command-line options override the configuration document.
 | `--index auto\|always\|never` | `output.index` |
 | `--file-stem NAME` | `output.fileStem` |
 | `--no-manifest` (`generate` only) | `output.manifest = false` |
-| `--deny-warnings` (`generate`, `validate`) | exit 1 if any warning or error is reported |
+| `--deny-warnings` (`generate`, `validate`, `inspect`) | exit 1 if any warning or error is reported |
 | `--sample N` (`explain` only) | number of records sampled, default 1000 |
+
+## `inspect`
+
+```sh
+advanced-sitemap inspect public/sitemap.xml public/sitemap-1.xml.gz
+advanced-sitemap --format json inspect --site https://example.com --strict sitemap.xml
+curl -s https://example.com/sitemap.xml | advanced-sitemap inspect -
+```
+
+`inspect` reads local files, or standard input with `-`. It does not fetch
+URLs: downloading needs an SSRF guard, which is planned. Gzip input is
+detected from its first bytes, not from the file name.
+
+Each file is checked for well-formedness, the root element and namespace,
+the XSD element order, the 50,000-entry and 50 MiB limits, and every entry
+is validated with the same rules as `generate`. Elements of extensions the
+engine does not model yet (video, news) are counted and skipped, not
+validated. Child sitemaps of an index are listed but not followed.
+
+| Option | Effect |
+|---|---|
+| `--site URL` | Report `HOST_MISMATCH` for URLs of another origin |
+| `--reference-time W3C-DATETIME` | Enable `LASTMOD_IN_FUTURE` |
+| `--strict` | Strict profile for `<url>` entries |
+| `--no-dedupe` | Do not report duplicate URLs |
+| `--max-bytes N` | Uncompressed bytes read per file before stopping (default 52428800) |
+| `--deny-warnings` | Exit 1 if any warning is reported |
+
+Hostile input is bounded: a `DOCTYPE` stops reading (no entity is ever
+expanded or fetched), the uncompressed size is capped (which also stops gzip
+bombs), and nesting depth and text length are limited. See
+[security](../security/README.md).
+
+The JSON output follows `schemas/inspect-report.v1.schema.json`. A file is
+`valid` when it was read to the end without any `error` diagnostic.
 
 ## Exit codes (stable contract)
 

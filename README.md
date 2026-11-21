@@ -88,6 +88,7 @@ For large or streamed inputs, use `Engine` (see
 | `sitemap-storage` | Staged artifact stores (file system, memory, null) |
 | `sitemap-index` | Partitioning and index layout |
 | `sitemap-protocol` | Versioned JSON documents and bounded readers |
+| `sitemap-reader` | Bounded reader of existing sitemaps (XML or gzip), used by `inspect` |
 | `advanced-sitemap` | Public facade: engine, builder, planner |
 | `sitemap-cli` | `advanced-sitemap` binary |
 

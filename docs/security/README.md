@@ -14,6 +14,23 @@
 | Clock and environment | Never read by the engine |
 | Network | The engine makes no network access in this version |
 
+### Reading untrusted sitemaps (`inspect`, `sitemap-reader`)
+
+- No DTD is processed: a `DOCTYPE` stops reading with
+  `XML_DOCTYPE_FORBIDDEN`. External entities (XXE) and recursive entity
+  expansion ("billion laughs") are therefore impossible. Only the five
+  predefined entities and character references are decoded.
+- The uncompressed size is capped (50 MiB by default) by a counting reader
+  placed after gzip decompression, so a small gzip bomb stops after reading
+  at most the limit plus one byte. A test decompresses 64 MiB of input
+  under a 4 MiB limit.
+- Nesting depth (32) and the text of one element (64 KiB) are capped.
+- Only UTF-8 is accepted. Characters forbidden by XML 1.0 stop reading.
+- Memory is bounded by the limits above plus 16 bytes per distinct URL
+  when duplicate detection is on (at most 50,000 entries per file).
+- Errors of the caller's reader are returned as I/O errors and never
+  confused with corrupt data.
+
 ## Trust boundaries
 
 - The **CLI** trusts its operator. Input and output paths, including

@@ -8,6 +8,19 @@ contain breaking changes.
 
 ### Added
 
+- `sitemap-reader` crate and CLI `inspect` command: bounded streaming reader
+  for existing sitemaps and sitemap indexes, plain or gzip, that refuses
+  DTDs, caps the uncompressed size, depth and text length, checks the XSD
+  element order and validates every entry with the generator rules.
+  12 new diagnostic codes (`XML_*`, `SITEMAP_TOO_LARGE`,
+  `SITEMAP_URL_LIMIT_EXCEEDED`, `GZIP_INVALID`, `PRIORITY_INVALID`).
+- `schemas/inspect-report.v1.schema.json`.
+
+### Changed
+
+- `quick-xml` is now a runtime dependency (of `sitemap-reader`); `flate2`
+  (pure Rust backend) is added. See ADR-0009.
+
 - Cargo workspace with eight crates (model, validation, xml, storage, index,
   protocol, facade, CLI).
 - Validation of URLs, W3C Datetime `lastmod`, `changefreq`, `priority`,
