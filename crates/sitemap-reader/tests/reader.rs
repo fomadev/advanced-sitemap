@@ -449,3 +449,44 @@ fn source_io_errors_are_returned() {
     let error = inspect(Failing, &InspectOptions::default(), |_| {}).unwrap_err();
     assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
 }
+
+const NEWS: &str = r#"<url><loc>https://example.com/business/article55.html</loc><news:news xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">
+  <news:publication><news:name>The Example Times</news:name><news:language>en</news:language></news:publication>
+  <news:genres>Blog</news:genres>
+  <news:publication_date>2026-11-20</news:publication_date>
+  <news:title>Companies A, B in Merger Talks</news:title>
+  <news:keywords>business, merger</news:keywords>
+</news:news></url>"#;
+
+#[test]
+fn reads_news_extension() {
+    let (report, items) = run(&urlset(NEWS));
+    assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics);
+    let Item::Url(url) = &items[0] else {
+        panic!("expected a url")
+    };
+    let news = url.news.as_ref().unwrap();
+    assert_eq!(news.publication_name, "The Example Times");
+    assert_eq!(news.language.as_str(), "en");
+    assert_eq!(news.title, "Companies A, B in Merger Talks");
+    assert_eq!((report.with_news, report.news_elements), (1, 1));
+
+    let twice = urlset(&NEWS.replace("</news:news></url>", "</news:news><news:news xmlns:news=\"http://www.google.com/schemas/sitemap-news/0.9\"/></url>"));
+    assert_eq!(codes(&run(&twice).0), ["XML_UNEXPECTED_ELEMENT"]);
+
+    let bad = urlset(&NEWS.replace(
+        "<news:language>en</news:language>",
+        "<news:language>en-GB</news:language>",
+    ));
+    assert_eq!(codes(&run(&bad).0), ["NEWS_LANGUAGE_INVALID"]);
+}
+
+#[test]
+fn more_than_1000_news_is_reported_once() {
+    let body: String = (0..1_001)
+        .map(|i| NEWS.replace("article55", &format!("article{i}")))
+        .collect();
+    let (report, items) = run(&urlset(&body));
+    assert_eq!(codes(&report), ["NEWS_LIMIT_EXCEEDED"]);
+    assert_eq!(items.len(), 1_001);
+}
