@@ -139,6 +139,7 @@ pub fn resolve_config(doc: ConfigDocument, base_dir: &Path) -> Result<ResolvedCo
             InvalidPolicySetting::Skip => InvalidPolicy::Skip,
         },
         dedupe: doc.validation.dedupe,
+        hreflang_reciprocity: doc.validation.hreflang_reciprocity,
         max_diagnostics: doc.validation.max_diagnostics as usize,
         strategy,
         limits,

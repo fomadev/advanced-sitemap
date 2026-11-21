@@ -199,6 +199,12 @@ diagnostic_codes! {
     RobotsTooLarge => "ROBOTS_TOO_LARGE", Warning;
     /// robots.txt does not list the generated sitemap because `publicBaseUrl` is not set.
     RobotsSitemapNotListed => "ROBOTS_SITEMAP_NOT_LISTED", Warning;
+    /// An alternate page in the run does not link back to the page that lists it.
+    HreflangReturnLinkMissing => "HREFLANG_RETURN_LINK_MISSING", Warning;
+    /// Two pages disagree on the language code of one of them.
+    HreflangConflict => "HREFLANG_CONFLICT", Warning;
+    /// Alternate links point outside the run, so their return links were not checked.
+    HreflangTargetNotListed => "HREFLANG_TARGET_NOT_LISTED", Info;
 }
 
 impl fmt::Display for DiagnosticCode {

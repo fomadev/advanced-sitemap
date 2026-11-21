@@ -330,3 +330,46 @@ fn robots_without_public_base_url_warns() {
     );
     assert_eq!(store.published().unwrap()["robots.txt"], b"");
 }
+
+#[test]
+fn hreflang_reciprocity_through_the_protocol() {
+    let text = r#"{
+      "schemaVersion": "1.1",
+      "validation": { "hreflangReciprocity": true },
+      "output": { "manifest": false },
+      "urls": [
+        { "loc": "https://example.com/en/", "alternates": [
+          { "hreflang": "en", "href": "https://example.com/en/" },
+          { "hreflang": "fr", "href": "https://example.com/fr/" },
+          { "hreflang": "de", "href": "https://example.de/" } ] },
+        { "loc": "https://example.com/fr/", "alternates": [
+          { "hreflang": "fr", "href": "https://example.com/fr/" } ] }
+      ]
+    }"#;
+    let resolved =
+        resolve_config(ConfigDocument::from_json(text).unwrap(), Path::new(".")).unwrap();
+    assert!(resolved.engine.hreflang_reciprocity);
+    let engine = Engine::new(resolved.engine.clone()).unwrap();
+    let source = open_input(resolved.input.as_ref().unwrap()).unwrap();
+    let report = engine
+        .run(source, &mut NullStore::new(), RunMode::DryRun)
+        .unwrap();
+    assert_eq!(report.status, RunStatus::Valid, "warnings do not block");
+    let codes: Vec<&str> = report.diagnostics.iter().map(|d| d.code.as_str()).collect();
+    assert_eq!(
+        codes,
+        ["HREFLANG_RETURN_LINK_MISSING", "HREFLANG_TARGET_NOT_LISTED"]
+    );
+    assert_eq!(report.diagnostics[0].location.record, Some(1));
+
+    // Off by default: no cross-entry diagnostics.
+    let off = text.replace(r#""hreflangReciprocity": true"#, r#""dedupe": true"#);
+    let resolved =
+        resolve_config(ConfigDocument::from_json(&off).unwrap(), Path::new(".")).unwrap();
+    let engine = Engine::new(resolved.engine.clone()).unwrap();
+    let source = open_input(resolved.input.as_ref().unwrap()).unwrap();
+    let report = engine
+        .run(source, &mut NullStore::new(), RunMode::DryRun)
+        .unwrap();
+    assert!(report.diagnostics.is_empty(), "{:?}", report.diagnostics);
+}

@@ -137,6 +137,9 @@ pub struct ValidationSection {
     /// Maximum diagnostics kept in the report. Default 1000.
     #[serde(default = "default_max_diagnostics")]
     pub max_diagnostics: u32,
+    /// Check hreflang return links across entries (since 1.1). Default `false`.
+    #[serde(default)]
+    pub hreflang_reciprocity: bool,
 }
 
 impl Default for ValidationSection {
@@ -146,6 +149,7 @@ impl Default for ValidationSection {
             on_invalid: InvalidPolicySetting::default(),
             dedupe: true,
             max_diagnostics: default_max_diagnostics(),
+            hreflang_reciprocity: false,
         }
     }
 }
