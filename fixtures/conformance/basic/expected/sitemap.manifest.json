@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "1.0",
+  "generator": "advanced-sitemap 0.1.0",
+  "totalUrls": 3,
+  "artifacts": [
+    {
+      "name": "sitemap.xml",
+      "kind": "sitemap",
+      "entries": 3,
+      "bytes": 578
+    }
+  ]
+}

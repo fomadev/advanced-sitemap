@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.0",
+  "output": { "manifest": false },
+  "urls": [
+    {
+      "loc": "https://example.com/fr/",
+      "alternates": [
+        { "hreflang": "fr", "href": "https://example.com/fr/" },
+        { "hreflang": "en-gb", "href": "https://example.com/en/" },
+        { "hreflang": "x-default", "href": "https://example.com/" }
+      ],
+      "images": [ { "loc": "https://cdn.example.com/café.png" } ]
+    }
+  ]
+}

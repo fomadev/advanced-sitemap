@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "1.0",
+  "urls": [
+    { "loc": "https://example.com/ok" },
+    { "loc": "example.com/relative", "lastmod": "21/11/2026", "priority": 2 },
+    { "loc": "https://example.com/ok" },
+    { "loc": "https://example.com/x", "lastMod": "2026-01-01" }
+  ]
+}

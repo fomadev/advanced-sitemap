@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "1.0",
+  "publicBaseUrl": "https://example.com/sitemaps",
+  "partitioning": { "maxUrls": 2 },
+  "urls": [
+    { "loc": "https://example.com/1", "lastmod": "2026-01-01" },
+    { "loc": "https://example.com/2", "lastmod": "2026-03-01T00:00:00Z" },
+    { "loc": "https://example.com/3" },
+    { "loc": "https://example.com/4" },
+    { "loc": "https://example.com/5", "lastmod": "2026-05-05" }
+  ]
+}
