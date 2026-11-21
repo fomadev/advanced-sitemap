@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["schemaVersion"],
   "properties": {
-    "schemaVersion": { "const": "1.0" },
+    "schemaVersion": { "enum": ["1.0", "1.1"], "description": "1.1 adds output.extensions." },
     "site": { "type": "string", "description": "Expected origin of page URLs." },
     "publicBaseUrl": { "type": "string", "description": "Public URL of the output directory; required when an index is written." },
     "referenceTime": { "type": "string", "description": "W3C Datetime used by time-dependent rules." },
@@ -37,7 +37,13 @@
         "directory": { "type": "string", "description": "Relative to the configuration file." },
         "fileStem": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$", "default": "sitemap" },
         "index": { "enum": ["auto", "always", "never"], "default": "auto" },
-        "manifest": { "type": "boolean", "default": true }
+        "manifest": { "type": "boolean", "default": true },
+        "extensions": {
+          "type": "array",
+          "description": "Extension namespaces declared on every file, in addition to xhtml and image (since 1.1).",
+          "items": { "enum": ["video"] },
+          "uniqueItems": true
+        }
       }
     },
     "source": {
