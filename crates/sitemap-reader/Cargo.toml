@@ -1,0 +1,18 @@
+[package]
+name = "sitemap-reader"
+description = "Bounded, streaming reader and inspector for existing sitemap and sitemap index files."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+sitemap-model.workspace = true
+sitemap-validation.workspace = true
+quick-xml.workspace = true
+flate2.workspace = true
+
+[lints]
+workspace = true

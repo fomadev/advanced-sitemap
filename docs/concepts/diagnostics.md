@@ -63,6 +63,32 @@ practice is not followed. `info` is informational.
 | `STALE_ARTIFACT` | info | A file from the previous manifest is no longer produced. It is not deleted |
 | `DIAGNOSTICS_TRUNCATED` | info | The list reached `maxDiagnostics`. Counts are exact |
 
+## Reading existing files (`inspect`)
+
+Codes marked *stops* end reading: the file report then has
+`complete: false` and its counts cover only the part read.
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `XML_MALFORMED` | error | Not well-formed XML (mismatched tags, invalid UTF-8, forbidden character, undefined entity, content after the root). *Stops* |
+| `XML_DOCTYPE_FORBIDDEN` | error | A `DOCTYPE` is present. Refused so that no entity can be declared or expanded. *Stops* |
+| `XML_ENCODING_UNSUPPORTED` | error | The declared encoding is not UTF-8. *Stops* |
+| `XML_ROOT_INVALID` | error | The root is not `urlset` or `sitemapindex` in the sitemaps.org namespace. *Stops* |
+| `XML_UNEXPECTED_ELEMENT` | warning | Unknown element of the sitemaps.org namespace, a repeated field, or `xhtml:link` without `rel="alternate"`. Ignored |
+| `XML_ELEMENT_ORDER` | warning | Elements are not in the XSD order: `loc`, `lastmod`, `changefreq`, `priority`, then extensions. Reported once per entry |
+| `XML_DEPTH_EXCEEDED` | error | Nesting deeper than the limit (32). *Stops* |
+| `XML_TEXT_TOO_LONG` | error | The text of one element is longer than the limit (64 KiB). *Stops* |
+| `SITEMAP_TOO_LARGE` | error | More than 50 MiB uncompressed (or `--max-bytes`). *Stops* |
+| `SITEMAP_URL_LIMIT_EXCEEDED` | error | More than 50,000 `<url>` elements. Reported once; reading continues |
+| `GZIP_INVALID` | error | The gzip stream is corrupt. *Stops* |
+| `PRIORITY_INVALID` | error | `priority` text is not a number |
+
+An index with more than 50,000 `<sitemap>` elements reports
+`INDEX_LIMIT_EXCEEDED`. Entry values are checked with the codes above
+(`URL_*`, `LASTMOD_*`, `CHANGEFREQ_INVALID`, `PRIORITY_OUT_OF_RANGE`,
+`HREFLANG_*`, `DUPLICATE_URL`, ...); `location.record` is the 1-based
+position of the entry in the file.
+
 ## Policies
 
 - With `onInvalid: fail` (the default), any `error` prevents publication.

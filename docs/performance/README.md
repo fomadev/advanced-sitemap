@@ -50,6 +50,14 @@ Observations:
   the first `validate` at 1 M read the input from a cold cache. Treat these
   numbers as orders of magnitude.
 
+## Inspecting existing files
+
+`inspect` on the 20 files produced by `generate` for 1 M URLs (168.6 MB):
+9.5 to 9.8 s once the files are in the OS cache (12.9 s on the first, cold
+run), about 100 k URL/s or 17 MB/s, single-threaded. Peak working set while
+inspecting one 50,000-URL file: 4.8 MiB. All 1,000,000 entries were read
+back as valid.
+
 ## Deduplication memory
 
 Deduplication keeps one 128-bit fingerprint per distinct `loc` in a

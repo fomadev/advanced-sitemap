@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/fomadev/advanced-sitemap/schemas/inspect-report.v1.schema.json",
+  "title": "Advanced Sitemap inspect report, protocol 1.0",
+  "type": "object",
+  "required": ["schemaVersion", "engineVersion", "command", "status", "files"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "engineVersion": { "type": "string" },
+    "command": { "const": "inspect" },
+    "status": {
+      "enum": ["valid", "invalid"],
+      "description": "valid when every file was read to the end without error diagnostics"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "kind", "compressed", "xmlBytes", "complete", "entries", "validEntries", "duplicates", "withLastmod", "withAlternates", "withImages", "unsupportedExtensions", "severityCounts", "diagnostics"],
+        "properties": {
+          "path": { "type": "string", "description": "File path, or - for standard input" },
+          "kind": { "enum": ["urlset", "sitemapindex", null] },
+          "compressed": { "type": "boolean" },
+          "xmlBytes": { "type": "integer", "description": "Uncompressed bytes read" },
+          "complete": { "type": "boolean", "description": "false when a limit or a fatal error stopped reading" },
+          "entries": { "type": "integer" },
+          "validEntries": { "type": "integer" },
+          "duplicates": { "type": "integer" },
+          "withLastmod": { "type": "integer" },
+          "withAlternates": { "type": "integer" },
+          "withImages": { "type": "integer" },
+          "unsupportedExtensions": {
+            "type": "object",
+            "description": "Skipped elements of namespaces that are not validated, by namespace URI",
+            "additionalProperties": { "type": "integer" }
+          },
+          "severityCounts": {
+            "type": "object",
+            "required": ["error", "warning", "recommendation", "info"],
+            "properties": {
+              "error": { "type": "integer" },
+              "warning": { "type": "integer" },
+              "recommendation": { "type": "integer" },
+              "info": { "type": "integer" }
+            }
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": { "$ref": "report.v1.schema.json#/properties/diagnostics/items" }
+          }
+        }
+      }
+    }
+  }
+}

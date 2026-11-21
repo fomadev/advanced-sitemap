@@ -13,14 +13,16 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use advanced_sitemap::inspect::{FileInspection, inspect_file, inspect_reader};
 use advanced_sitemap::plan::{Plan, explain};
 use advanced_sitemap::protocol::{
     IndexSetting, InvalidPolicySetting, SourceFormat, SourceSection, StrategySetting,
     ValidationModeSetting,
 };
 use advanced_sitemap::{
-    ConfigDocument, Engine, EngineError, FsStore, GenerationReport, NullStore, ResolvedConfig,
-    RunMode, open_input, resolve_config,
+    ConfigDocument, Diagnostic, Engine, EngineError, FsStore, GenerationReport, InspectOptions,
+    NullStore, ReaderLimits, ResolvedConfig, RunMode, SeverityCounts, SitemapUrl, ValidationMode,
+    ValidationOptions, W3cDateTime, limits, open_input, resolve_config,
 };
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
@@ -29,7 +31,7 @@ const EXIT_CONFIG: u8 = 2;
 const EXIT_IO: u8 = 3;
 const EXIT_INTERNAL: u8 = 4;
 
-/// Universal sitemap engine: validate, plan and generate sitemaps.
+/// Universal sitemap engine: validate, plan, generate and inspect sitemaps.
 #[derive(Parser)]
 #[command(name = "advanced-sitemap", version, about, max_term_width = 100)]
 struct Cli {
@@ -79,6 +81,33 @@ enum Command {
         #[arg(long, default_value_t = 1000)]
         sample: usize,
     },
+    /// Read and check existing sitemap or sitemap index files (plain or gzip). Writes nothing.
+    Inspect(InspectArgs),
+}
+
+#[derive(Args)]
+struct InspectArgs {
+    /// Local files to inspect; `-` reads standard input. Remote URLs are not supported yet.
+    #[arg(required = true)]
+    files: Vec<PathBuf>,
+    /// Expected site origin, e.g. `https://example.com`.
+    #[arg(long)]
+    site: Option<String>,
+    /// Reference time for time-dependent rules (W3C Datetime).
+    #[arg(long)]
+    reference_time: Option<String>,
+    /// Use the strict validation profile for `<url>` entries.
+    #[arg(long)]
+    strict: bool,
+    /// Do not report duplicate URLs.
+    #[arg(long)]
+    no_dedupe: bool,
+    /// Maximum uncompressed bytes read per file (default: 52428800, the protocol limit).
+    #[arg(long)]
+    max_bytes: Option<u64>,
+    /// Exit with code 1 when warnings are reported.
+    #[arg(long)]
+    deny_warnings: bool,
 }
 
 #[derive(Args)]
@@ -334,6 +363,7 @@ fn main() -> ExitCode {
             print_plan(&plan, format);
             Ok(ExitCode::SUCCESS)
         }),
+        Command::Inspect(args) => run_inspect(&args, format),
     };
 
     match result {
@@ -355,7 +385,137 @@ fn main() -> ExitCode {
     }
 }
 
+fn inspect_options(args: &InspectArgs) -> Result<InspectOptions, Failure> {
+    let site = args
+        .site
+        .as_deref()
+        .map(|s| SitemapUrl::new(s).map_err(|e| config_failure(format!("--site: {e}"))))
+        .transpose()?;
+    let reference_time = args
+        .reference_time
+        .as_deref()
+        .map(|s| {
+            W3cDateTime::parse(s).map_err(|e| config_failure(format!("--reference-time: {e}")))
+        })
+        .transpose()?;
+    let max_bytes = args.max_bytes.unwrap_or(limits::MAX_SITEMAP_BYTES);
+    if max_bytes == 0 {
+        return Err(config_failure("--max-bytes must be at least 1"));
+    }
+    Ok(InspectOptions {
+        limits: ReaderLimits {
+            max_bytes,
+            ..ReaderLimits::default()
+        },
+        validation: ValidationOptions {
+            mode: if args.strict {
+                ValidationMode::Strict
+            } else {
+                ValidationMode::Standard
+            },
+            site,
+            reference_time,
+        },
+        dedupe: !args.no_dedupe,
+    })
+}
+
+fn run_inspect(args: &InspectArgs, format: Format) -> Result<ExitCode, Failure> {
+    let options = inspect_options(args)?;
+    let mut files = Vec::with_capacity(args.files.len());
+    for path in &args.files {
+        let io_failure = |e: std::io::Error| Failure {
+            code: EXIT_IO,
+            kind: "io",
+            message: format!("{}: {e}", path.display()),
+        };
+        let inspection = if path.as_os_str() == "-" {
+            inspect_reader("-", std::io::stdin().lock(), &options, |_| {}).map_err(io_failure)?
+        } else {
+            inspect_file(path, &options).map_err(io_failure)?
+        };
+        files.push(inspection);
+    }
+    let valid = files.iter().all(FileInspection::is_valid);
+    let warned = files.iter().any(|f| f.severity_counts.warning > 0);
+    match format {
+        Format::Json => {
+            let value = serde_json::json!({
+                "schemaVersion": "1.0",
+                "engineVersion": advanced_sitemap::ENGINE_VERSION,
+                "command": "inspect",
+                "status": if valid { "valid" } else { "invalid" },
+                "files": files,
+            });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&value).unwrap_or_default()
+            );
+        }
+        Format::Human => {
+            for file in &files {
+                print_inspection(file);
+            }
+        }
+    }
+    if !valid || (args.deny_warnings && warned) {
+        Ok(ExitCode::from(EXIT_FAILED))
+    } else {
+        Ok(ExitCode::SUCCESS)
+    }
+}
+
+fn print_inspection(file: &FileInspection) {
+    println!("advanced-sitemap inspect {}", file.path);
+    let status = match (file.complete, file.severity_counts.error) {
+        (false, _) => "invalid (reading stopped)",
+        (true, 0) => "valid",
+        (true, _) => "invalid",
+    };
+    println!("  Status       {status}");
+    println!(
+        "  Document     {}{}, {} bytes uncompressed",
+        file.kind.unwrap_or("unknown"),
+        if file.compressed { " (gzip)" } else { "" },
+        file.xml_bytes
+    );
+    println!(
+        "  Entries      {} found, {} valid, {} duplicates",
+        file.entries, file.valid_entries, file.duplicates
+    );
+    println!(
+        "  Fields       {} with lastmod, {} with alternates, {} with images",
+        file.with_lastmod, file.with_alternates, file.with_images
+    );
+    for (namespace, count) in &file.unsupported_extensions {
+        println!("  Not checked  {count} elements of {namespace}");
+    }
+    print_diagnostics(&file.severity_counts, &file.diagnostics);
+}
+
 const HUMAN_DIAGNOSTIC_LIMIT: usize = 20;
+
+fn print_diagnostics(counts: &SeverityCounts, diagnostics: &[Diagnostic]) {
+    println!(
+        "  Diagnostics  {} errors, {} warnings, {} recommendations, {} info",
+        counts.error, counts.warning, counts.recommendation, counts.info
+    );
+    for diagnostic in diagnostics.iter().take(HUMAN_DIAGNOSTIC_LIMIT) {
+        println!("    {diagnostic}");
+        if let Some(value) = &diagnostic.value {
+            println!("        value: {value}");
+        }
+        if let Some(suggestion) = &diagnostic.suggestion {
+            println!("        fix:   {suggestion}");
+        }
+    }
+    if diagnostics.len() > HUMAN_DIAGNOSTIC_LIMIT {
+        println!(
+            "    ... {} more listed in --format json",
+            diagnostics.len() - HUMAN_DIAGNOSTIC_LIMIT
+        );
+    }
+}
 
 fn finish_report(
     command: &str,
@@ -416,26 +576,7 @@ fn print_report(command: &str, report: &GenerationReport) {
             );
         }
     }
-    let c = &report.severity_counts;
-    println!(
-        "  Diagnostics  {} errors, {} warnings, {} recommendations, {} info",
-        c.error, c.warning, c.recommendation, c.info
-    );
-    for diagnostic in report.diagnostics.iter().take(HUMAN_DIAGNOSTIC_LIMIT) {
-        println!("    {diagnostic}");
-        if let Some(value) = &diagnostic.value {
-            println!("        value: {value}");
-        }
-        if let Some(suggestion) = &diagnostic.suggestion {
-            println!("        fix:   {suggestion}");
-        }
-    }
-    if report.diagnostics.len() > HUMAN_DIAGNOSTIC_LIMIT {
-        println!(
-            "    ... {} more listed in --format json",
-            report.diagnostics.len() - HUMAN_DIAGNOSTIC_LIMIT
-        );
-    }
+    print_diagnostics(&report.severity_counts, &report.diagnostics);
 }
 
 fn print_plan(plan: &Plan, format: Format) {

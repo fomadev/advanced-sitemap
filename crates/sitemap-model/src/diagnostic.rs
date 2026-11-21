@@ -121,6 +121,30 @@ diagnostic_codes! {
     StaleArtifact => "STALE_ARTIFACT", Info;
     /// The diagnostic list reached its limit; counts remain exact.
     DiagnosticsTruncated => "DIAGNOSTICS_TRUNCATED", Info;
+    /// An inspected document is not well-formed XML; reading stops.
+    XmlMalformed => "XML_MALFORMED", Error;
+    /// An inspected document declares a DOCTYPE, which is refused (entity expansion attacks); reading stops.
+    XmlDoctypeForbidden => "XML_DOCTYPE_FORBIDDEN", Error;
+    /// An inspected document declares an encoding other than UTF-8; reading stops.
+    XmlEncodingUnsupported => "XML_ENCODING_UNSUPPORTED", Error;
+    /// The root element is not `urlset` or `sitemapindex` in the sitemaps.org namespace; reading stops.
+    XmlRootInvalid => "XML_ROOT_INVALID", Error;
+    /// An element is unknown at its position in the sitemaps.org namespace, or repeated; it is ignored.
+    XmlUnexpectedElement => "XML_UNEXPECTED_ELEMENT", Warning;
+    /// Elements are not in the XSD order (loc, lastmod, changefreq, priority, then extensions).
+    XmlElementOrder => "XML_ELEMENT_ORDER", Warning;
+    /// Elements are nested deeper than the configured limit; reading stops.
+    XmlDepthExceeded => "XML_DEPTH_EXCEEDED", Error;
+    /// The text of one element is longer than the configured limit; reading stops.
+    XmlTextTooLong => "XML_TEXT_TOO_LONG", Error;
+    /// The uncompressed document is larger than the configured limit (50 MiB by default); reading stops.
+    SitemapTooLarge => "SITEMAP_TOO_LARGE", Error;
+    /// A sitemap file contains more than 50,000 `<url>` elements.
+    SitemapUrlLimitExceeded => "SITEMAP_URL_LIMIT_EXCEEDED", Error;
+    /// A gzip-compressed document cannot be decompressed; reading stops.
+    GzipInvalid => "GZIP_INVALID", Error;
+    /// `priority` text in an inspected document is not a number.
+    PriorityInvalid => "PRIORITY_INVALID", Error;
 }
 
 impl fmt::Display for DiagnosticCode {
