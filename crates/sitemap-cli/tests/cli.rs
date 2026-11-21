@@ -339,3 +339,55 @@ fn inspect_exit_codes() {
         .unwrap();
     assert_eq!(code(&usage), 2);
 }
+
+#[test]
+fn skip_unchanged_leaves_identical_files_untouched() {
+    let temp = TempDir::new("skip-unchanged");
+    let out = temp.0.join("out");
+    let config = fixtures().join("partitioned/config.json");
+    let generate = |extra: &[&str]| {
+        let output = bin()
+            .args(["--format", "json", "generate", "--config"])
+            .arg(&config)
+            .arg("--out")
+            .arg(&out)
+            .args(extra)
+            .output()
+            .unwrap();
+        assert_eq!(
+            code(&output),
+            0,
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        json(&output)
+    };
+    let first = generate(&[]);
+    let unchanged = |report: &serde_json::Value| {
+        report["artifacts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|a| a["unchanged"] == true)
+            .count()
+    };
+    assert_eq!(unchanged(&first), 0);
+    let mtime = |name: &str| fs::metadata(out.join(name)).unwrap().modified().unwrap();
+    let before = mtime("sitemap-1.xml");
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+
+    let second = generate(&["--skip-unchanged"]);
+    let total = second["artifacts"].as_array().unwrap().len();
+    assert_eq!(unchanged(&second), total, "{second}");
+    assert_eq!(mtime("sitemap-1.xml"), before, "file was rewritten");
+    assert!(
+        !listing(&out)
+            .iter()
+            .any(|n| n.starts_with(".advanced-sitemap-staging"))
+    );
+
+    // Without the flag every file is republished.
+    let third = generate(&[]);
+    assert_eq!(unchanged(&third), 0);
+    assert_ne!(mtime("sitemap-1.xml"), before);
+}
