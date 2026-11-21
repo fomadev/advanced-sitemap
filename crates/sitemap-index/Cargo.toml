@@ -1,0 +1,17 @@
+[package]
+name = "sitemap-index"
+description = "Partitioning of sitemap entries under protocol limits, and sitemap index planning."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+sitemap-model.workspace = true
+sitemap-xml.workspace = true
+sitemap-storage.workspace = true
+
+[lints]
+workspace = true
