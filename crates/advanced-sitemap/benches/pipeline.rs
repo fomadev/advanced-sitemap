@@ -22,23 +22,25 @@ fn dataset(n: usize) -> Vec<RawUrlRecord> {
                 "https://shop.example.com/products/item-{i}?ref=catalog&page={}",
                 i % 50
             );
-            let mut record = RawUrlRecord {
-                lastmod: Some(format!(
-                    "2026-{:02}-{:02}T10:00:00Z",
-                    i % 12 + 1,
-                    i % 28 + 1
-                )),
-                ..RawUrlRecord::with_loc(loc.clone())
-            };
+            let mut record = RawUrlRecord::with_loc(loc.clone());
+            record.lastmod = Some(format!(
+                "2026-{:02}-{:02}T10:00:00Z",
+                i % 12 + 1,
+                i % 28 + 1
+            ));
             if i % 10 == 0 {
                 record.alternates = vec![
-                    RawAlternate {
-                        hreflang: Some("en".into()),
-                        href: Some(loc.clone()),
+                    {
+                        let mut this = RawAlternate::default();
+                        this.hreflang = Some("en".into());
+                        this.href = Some(loc.clone());
+                        this
                     },
-                    RawAlternate {
-                        hreflang: Some("fr".into()),
-                        href: Some(format!("https://shop.example.com/fr/produits/item-{i}")),
+                    {
+                        let mut this = RawAlternate::default();
+                        this.hreflang = Some("fr".into());
+                        this.href = Some(format!("https://shop.example.com/fr/produits/item-{i}"));
+                        this
                     },
                 ];
             }
@@ -48,10 +50,8 @@ fn dataset(n: usize) -> Vec<RawUrlRecord> {
 }
 
 fn engine(strategy: PartitionStrategy) -> Engine {
-    let mut config = EngineConfig {
-        strategy,
-        ..EngineConfig::default()
-    };
+    let mut config = EngineConfig::default();
+    config.strategy = strategy;
     config.layout.public_base_url =
         Some(PublicBaseUrl::new(SitemapUrl::new("https://shop.example.com/").unwrap()).unwrap());
     Engine::new(config).unwrap()

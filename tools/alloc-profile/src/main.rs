@@ -177,8 +177,8 @@ fn main() {
         feed.push_str("}
 ");
     }
-    let resolved = advanced_sitemap::ResolvedConfig {
-        engine: {
+    let resolved = advanced_sitemap::ResolvedConfig::new(
+        {
             let mut c = EngineConfig::default();
             c.strategy = advanced_sitemap::PartitionStrategy::ConsistentHash {
                 partitions: std::num::NonZeroU32::new(8).unwrap(),
@@ -186,9 +186,9 @@ fn main() {
             c.snapshot = Some(SnapshotSettings::new(std::env::temp_dir().join("alloc-profile-none")));
             c
         },
-        input: None,
-        output_dir: std::env::temp_dir().join("alloc-profile-none-out"),
-    };
+        None,
+        std::env::temp_dir().join("alloc-profile-none-out"),
+    );
     let base = LIVE.load(Ordering::Relaxed);
     PEAK.store(base, Ordering::Relaxed);
     let feed_reader = advanced_sitemap::protocol::JsonlReader::<_, advanced_sitemap::protocol::ChangeRecord>::typed(

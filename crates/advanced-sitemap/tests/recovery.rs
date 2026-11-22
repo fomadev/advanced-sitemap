@@ -35,11 +35,9 @@ impl Drop for TempDir {
 }
 
 fn config(state: Option<&Path>) -> EngineConfig {
-    let mut config = EngineConfig {
-        strategy: PartitionStrategy::ConsistentHash {
-            partitions: NonZeroU32::new(4).unwrap(),
-        },
-        ..EngineConfig::default()
+    let mut config = EngineConfig::default();
+    config.strategy = PartitionStrategy::ConsistentHash {
+        partitions: NonZeroU32::new(4).unwrap(),
     };
     config.layout.public_base_url =
         Some(PublicBaseUrl::new(SitemapUrl::new("https://example.com/").unwrap()).unwrap());
@@ -50,10 +48,11 @@ fn config(state: Option<&Path>) -> EngineConfig {
 fn input(versions: &BTreeMap<u32, u32>) -> Vec<RawUrlRecord> {
     let mut records: Vec<RawUrlRecord> = versions
         .iter()
-        .map(|(id, v)| RawUrlRecord {
-            loc: Some(format!("https://example.com/p/{id:04}")),
-            lastmod: Some(format!("2026-01-{:02}", 1 + v % 28)),
-            ..RawUrlRecord::default()
+        .map(|(id, v)| {
+            let mut this = RawUrlRecord::default();
+            this.loc = Some(format!("https://example.com/p/{id:04}"));
+            this.lastmod = Some(format!("2026-01-{:02}", 1 + v % 28));
+            this
         })
         .collect();
     records.sort_by(|a, b| a.loc.cmp(&b.loc));
@@ -174,13 +173,13 @@ fn a_snapshot_older_than_the_published_files_makes_apply_refuse() {
     fs::write(state.join("sitemap.snapshot"), snapshot).unwrap();
     let before = files(&out);
 
-    let feed = vec![Ok(SourceRecord {
-        record: 1,
-        line: Some(1),
-        result: Ok(ChangeRecord::Upsert {
+    let feed = vec![Ok(SourceRecord::new(
+        1,
+        Some(1),
+        Ok(ChangeRecord::Upsert {
             url: input(&BTreeMap::from([(3, 9)])).remove(0),
         }),
-    })];
+    ))];
     let result = Engine::new(config(Some(&state))).unwrap().apply_changes(
         feed,
         &mut FsStore::new(&out),

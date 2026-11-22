@@ -134,14 +134,13 @@ fn undeclared_entities_are_a_well_formedness_error() {
 fn uncompressed_size_is_capped() {
     let body = "<url><loc>https://example.com/</loc></url>".repeat(100);
     let xml = urlset(&body);
-    let options = InspectOptions {
-        limits: ReaderLimits {
-            max_bytes: 1_000,
-            ..ReaderLimits::default()
-        },
-        dedupe: false,
-        ..InspectOptions::default()
+    let mut options = InspectOptions::default();
+    options.limits = {
+        let mut this = ReaderLimits::default();
+        this.max_bytes = 1_000;
+        this
     };
+    options.dedupe = false;
     let (report, _) = run_with(xml.as_bytes(), &options);
     assert_eq!(
         report.diagnostics.last().unwrap().code,
@@ -151,14 +150,13 @@ fn uncompressed_size_is_capped() {
     assert!(report.xml_bytes <= 1_001);
 
     // Exactly at the limit is accepted.
-    let exact = InspectOptions {
-        limits: ReaderLimits {
-            max_bytes: xml.len() as u64,
-            ..ReaderLimits::default()
-        },
-        dedupe: false,
-        ..InspectOptions::default()
+    let mut exact = InspectOptions::default();
+    exact.limits = {
+        let mut this = ReaderLimits::default();
+        this.max_bytes = xml.len() as u64;
+        this
     };
+    exact.dedupe = false;
     assert!(run_with(xml.as_bytes(), &exact).0.complete);
 }
 
@@ -171,12 +169,11 @@ fn gzip_bomb_stops_at_the_uncompressed_limit() {
     xml.extend_from_slice(b"</urlset>");
     let bomb = gzip(&xml);
     assert!(bomb.len() < 1 << 20);
-    let options = InspectOptions {
-        limits: ReaderLimits {
-            max_bytes: 4 << 20,
-            ..ReaderLimits::default()
-        },
-        ..InspectOptions::default()
+    let mut options = InspectOptions::default();
+    options.limits = {
+        let mut this = ReaderLimits::default();
+        this.max_bytes = 4 << 20;
+        this
     };
     let (report, _) = run_with(&bomb, &options);
     assert_eq!(codes(&report), ["SITEMAP_TOO_LARGE"]);
@@ -298,13 +295,13 @@ fn invalid_values_reuse_generator_diagnostics() {
 
 #[test]
 fn strict_profile_applies_to_urls() {
-    let options = InspectOptions {
-        validation: ValidationOptions {
-            mode: ValidationMode::Strict,
-            site: Some(SitemapUrl::new("https://example.com/").unwrap()),
-            reference_time: None,
-        },
-        ..InspectOptions::default()
+    let mut options = InspectOptions::default();
+    options.validation = {
+        let mut this = ValidationOptions::default();
+        this.mode = ValidationMode::Strict;
+        this.site = Some(SitemapUrl::new("https://example.com/").unwrap());
+        this.reference_time = None;
+        this
     };
     let xml = urlset("<url><loc>http://other.example/</loc></url>");
     let (report, items) = run_with(xml.as_bytes(), &options);
@@ -429,10 +426,8 @@ fn sitemap_index_entries() {
 #[test]
 fn more_than_50000_urls_is_reported_once() {
     let body = "<url><loc>https://example.com/</loc></url>".repeat(50_002);
-    let options = InspectOptions {
-        dedupe: false,
-        ..InspectOptions::default()
-    };
+    let mut options = InspectOptions::default();
+    options.dedupe = false;
     let (report, items) = run_with(urlset(&body).as_bytes(), &options);
     assert_eq!(codes(&report), ["SITEMAP_URL_LIMIT_EXCEEDED"]);
     assert_eq!(items.len(), 50_002);

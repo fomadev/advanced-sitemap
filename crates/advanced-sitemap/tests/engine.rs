@@ -114,10 +114,8 @@ fn output_is_deterministic() {
 
 #[test]
 fn skip_policy_publishes_valid_records() {
-    let config = EngineConfig {
-        on_invalid: InvalidPolicy::Skip,
-        ..EngineConfig::default()
-    };
+    let mut config = EngineConfig::default();
+    config.on_invalid = InvalidPolicy::Skip;
     let engine = Engine::new(config).unwrap();
     let mut store = MemoryStore::new();
     let report = engine
@@ -165,10 +163,8 @@ fn dry_run_publishes_nothing() {
 
 #[test]
 fn missing_public_base_url_fails_without_publishing() {
-    let config = EngineConfig {
-        limits: PartitionLimits::new(1, 52_428_800).unwrap(),
-        ..EngineConfig::default()
-    };
+    let mut config = EngineConfig::default();
+    config.limits = PartitionLimits::new(1, 52_428_800).unwrap();
     let engine = Engine::new(config).unwrap();
     let mut store = MemoryStore::new();
     let report = engine
@@ -188,10 +184,8 @@ fn missing_public_base_url_fails_without_publishing() {
 
 #[test]
 fn stale_artifacts_are_reported_not_deleted() {
-    let mut config = EngineConfig {
-        limits: PartitionLimits::new(1, 52_428_800).unwrap(),
-        ..EngineConfig::default()
-    };
+    let mut config = EngineConfig::default();
+    config.limits = PartitionLimits::new(1, 52_428_800).unwrap();
     config.layout.public_base_url =
         Some(PublicBaseUrl::new(SitemapUrl::new("https://example.com/").unwrap()).unwrap());
     let engine = Engine::new(config).unwrap();
@@ -215,11 +209,9 @@ fn stale_artifacts_are_reported_not_deleted() {
 
 #[test]
 fn diagnostics_are_capped_with_exact_counts() {
-    let config = EngineConfig {
-        max_diagnostics: 5,
-        on_invalid: InvalidPolicy::Skip,
-        ..EngineConfig::default()
-    };
+    let mut config = EngineConfig::default();
+    config.max_diagnostics = 5;
+    config.on_invalid = InvalidPolicy::Skip;
     let engine = Engine::new(config).unwrap();
     let mut store = MemoryStore::new();
     let bad = (0..20).map(|i| RawUrlRecord::with_loc(format!("ftp://example.com/{i}")));
@@ -300,27 +292,27 @@ fn file_store_end_to_end_and_well_formed() {
 
 #[test]
 fn invalid_robots_configuration_is_refused() {
-    let config = EngineConfig {
-        robots: Some(advanced_sitemap::RobotsConfig {
-            groups: vec![advanced_sitemap::RobotsGroup {
-                user_agents: vec!["*".into()],
-                disallow: vec!["private".into()],
-                allow: vec![],
-            }],
-            sitemaps: vec![],
-        }),
-        ..EngineConfig::default()
-    };
+    let mut config = EngineConfig::default();
+    config.robots = Some({
+        let mut this = advanced_sitemap::RobotsConfig::default();
+        this.groups = vec![{
+            let mut this = advanced_sitemap::RobotsGroup::default();
+            this.user_agents = vec!["*".into()];
+            this.disallow = vec!["private".into()];
+            this.allow = vec![];
+            this
+        }];
+        this.sitemaps = vec![];
+        this
+    });
     let error = Engine::new(config).unwrap_err().to_string();
     assert!(error.contains("ROBOTS_PATH_INVALID"), "{error}");
 }
 
 #[test]
 fn robots_without_public_base_url_warns() {
-    let config = EngineConfig {
-        robots: Some(advanced_sitemap::RobotsConfig::default()),
-        ..EngineConfig::default()
-    };
+    let mut config = EngineConfig::default();
+    config.robots = Some(advanced_sitemap::RobotsConfig::default());
     let engine = Engine::new(config).unwrap();
     let mut store = MemoryStore::new();
     let report = engine

@@ -4,17 +4,12 @@
 #![no_main]
 
 use advanced_sitemap::inspect::inspect_reader;
-use advanced_sitemap::{InspectOptions, Item, Namespaces, ReaderLimits, xml};
+use advanced_sitemap::{InspectOptions, Item, Namespaces, xml};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    let options = InspectOptions {
-        limits: ReaderLimits {
-            max_bytes: 1 << 20,
-            ..ReaderLimits::default()
-        },
-        ..InspectOptions::default()
-    };
+    let mut options = InspectOptions::default();
+    options.limits.max_bytes = 1 << 20;
     let mut blocks = Vec::new();
     let Ok(report) = inspect_reader("fuzz", data, &options, |item| {
         if let Item::Url(entry) = item {

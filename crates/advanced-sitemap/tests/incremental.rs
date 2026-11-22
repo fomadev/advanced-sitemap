@@ -34,12 +34,10 @@ impl Rng {
 }
 
 fn config(strategy: PartitionStrategy, publish: PublishPolicy) -> EngineConfig {
-    let mut config = EngineConfig {
-        strategy,
-        publish,
-        limits: PartitionLimits::new(7, 52_428_800).unwrap(),
-        ..EngineConfig::default()
-    };
+    let mut config = EngineConfig::default();
+    config.strategy = strategy;
+    config.publish = publish;
+    config.limits = PartitionLimits::new(7, 52_428_800).unwrap();
     config.layout.public_base_url = Some(
         PublicBaseUrl::new(SitemapUrl::new("https://example.com/sitemaps/").unwrap()).unwrap(),
     );
@@ -47,14 +45,15 @@ fn config(strategy: PartitionStrategy, publish: PublishPolicy) -> EngineConfig {
 }
 
 fn record(id: u64, version: u64) -> RawUrlRecord {
-    RawUrlRecord {
-        loc: Some(format!("https://example.com/p/{id}")),
-        lastmod: Some(format!(
+    {
+        let mut this = RawUrlRecord::default();
+        this.loc = Some(format!("https://example.com/p/{id}"));
+        this.lastmod = Some(format!(
             "2026-{:02}-{:02}",
             1 + version % 12,
             1 + version % 28
-        )),
-        ..RawUrlRecord::default()
+        ));
+        this
     }
 }
 
@@ -579,13 +578,13 @@ fn explain_measures_the_migration_from_the_snapshot() {
     let plan_for = |strategy: PartitionStrategy| {
         let mut engine = config.clone();
         engine.strategy = strategy;
-        let resolved = ResolvedConfig {
+        let resolved = ResolvedConfig::new(
             engine,
-            input: Some(InputSpec::Inline(vec![
+            Some(InputSpec::Inline(vec![
                 serde_json::json!({"loc": "https://example.com/"}),
             ])),
-            output_dir: state.0.join("out"),
-        };
+            state.0.join("out"),
+        );
         explain(&resolved, 10).unwrap().migration.unwrap()
     };
     let same = plan_for(before);

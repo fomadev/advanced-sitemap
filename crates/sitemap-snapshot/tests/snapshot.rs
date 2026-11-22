@@ -16,11 +16,7 @@ fn temp(label: &str) -> PathBuf {
 }
 
 fn record(loc: &str, version: u8, partition: u32) -> Record {
-    Record {
-        loc: loc.to_owned(),
-        content: digest128(&[version]),
-        partition,
-    }
+    Record::new(loc, digest128(&[version]), partition)
 }
 
 fn build(records: &[Record], budget: usize, dir: &PathBuf) -> (Vec<u8>, usize) {
