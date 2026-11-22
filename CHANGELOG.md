@@ -6,7 +6,25 @@ contain breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- Lot B (planner): execution modes `full`, `skip-unchanged` and `auto`
+  (`output.publish = "auto"`, `--execution-mode`); the report's `execution`
+  records the mode and why. `explain` gives an execution plan (candidate
+  modes, preconditions, estimated time, bytes, memory, partitions) with a
+  state token; `--expect-state` refuses a run planned on another state
+  (`EngineError::StateChanged`, exit code 2). `explain --changes` plans an
+  `apply` without writing. Cost model `plan::CostModel`.
+- Manifest entries and artifact reports carry the BLAKE3-128 digest of
+  each file.
+
 ### Fixed
+
+- A run interrupted after publishing, before the snapshot was replaced,
+  is detected: snapshot format v2 records the manifest digest of the
+  publication it describes; `SNAPSHOT_STALE` warns and `apply` refuses.
+- `explain` takes `--out`: it used to plan for another directory than
+  `generate` and `apply` without a configuration file.
 
 - Concurrent runs on the same output or state directory are refused
   (`EngineError::Busy`, CLI exit code 3, kind `busy`): they could
@@ -21,6 +39,11 @@ contain breaking changes.
 
 - Every crate forbids unsafe code. Production readiness audit in
   `docs/production/`.
+- Snapshot format v2 (v1 still read). `PublishPolicy` and
+  `PublishSetting` gain `Auto`; `EngineConfig` gains `expected_state`;
+  `EngineError` gains `StateChanged`; `GenerationReport` gains `execution`;
+  `ArtifactReport` and `ManifestArtifact` gain `digest`; `PartitionSummary`
+  gains `digest`; `Plan` gains `execution`.
 - `ArtifactStore` gains `lock()` (default: no-op); `sitemap-storage` gains
   `DirectoryLock`, `LOCK_FILE` and `sync_dir`; `EngineError` gains `Busy`.
 

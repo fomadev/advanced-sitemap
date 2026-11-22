@@ -87,6 +87,23 @@ suffit de recalculer `jump(fnv1a64(loc), N')` ou `fnv1a64(loc) mod N'`. Sans
 niveau URL, le chiffre est `Estimated` (fraction 1/(N+1) pour
 `consistent-hash`, N/(N+1) pour `stable-hash`).
 
+## 4 bis. État (lot B, 2026-11-22)
+
+- Modes `full`, `skip-unchanged`, `auto` (`output.publish`,
+  `--execution-mode`) ; `auto` choisit `skip-unchanged` dès qu'une
+  publication existe. Le rapport indique le mode et la raison.
+- `explain` donne un plan d'exécution : modes candidats, préconditions,
+  coûts estimés (temps, octets, mémoire, partitions), jeton d'état.
+  `explain --changes` planifie un `apply` sans écrire.
+- Jeton d'état et `--expect-state` : un plan périmé est refusé, sous verrou.
+- Lien snapshot ↔ publication (snapshot v2, empreintes du manifest) :
+  `SNAPSHOT_STALE` et refus d'`apply` après une publication interrompue.
+- Pas de repli automatique d'`apply` vers une génération complète : il
+  faudrait que la source contienne déjà le flux, ce qui ne peut pas être
+  vérifié. `explain` le recommande au lieu de le faire.
+- Restent à faire : réserves en octets et en news, `PARTITION_COUNT_SUGGESTED`
+  depuis le snapshot.
+
 ## 5. Explain Engine
 
 Sortie humaine et JSON (schéma versionné, comme le rapport). Ce qu'elle
