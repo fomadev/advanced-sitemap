@@ -28,7 +28,7 @@ publication incorrecte ; **P1** bloque une utilisation en production ;
 | R15 | Tests à 10 M et 50 M d'URL non faits | P2 | **Corrigé pour 10 M** ; 50 M ouvert | C | 10 M mesuré (mémoire bornée vérifiée) ; 50 M impossible sur la machine de référence (10 Go libres), coûts extrapolés |
 | R24 | Une seule unité de calcul utilisée : la validation (dont l'analyse des URL) domine le temps CPU | P3 | Ouvert | — | Gain possible par validation parallèle avec fusion ordonnée ; à mesurer avant de décider |
 | R16 | Linux ARM64 et Windows ARM64 non testés | P2 | Ouvert | F | macOS ARM64 testé en CI |
-| R17 | API Rust publique non stabilisée (structs publiques à champs publics, enums non `#[non_exhaustive]`) | P1 pour 1.0 | Ouvert | E | Chaque ajout de variante est aujourd'hui un changement incompatible |
+| R17 | API Rust publique non stabilisée (structs publiques à champs publics, enums non `#[non_exhaustive]`) | P1 pour 1.0 | **Corrigé** | E | Types publics `#[non_exhaustive]` imposés par clippy, constructeurs, `EngineError::kind`, politique `semver-policy.md` ; comparaison automatique d'API (`cargo semver-checks`) seulement après une première version publiée |
 | R18 | ADR-0010 à 0013 non approuvés ; format du snapshot dépendant de l'ADR-0011 | P1 pour 1.0 | Ouvert | Décision | |
 | R19 | Licence FPL : clarifications et titulaire des droits non confirmés | P1 pour une distribution | Ouvert | Décision | Aucun package publié |
 | R20 | Fichier de verrou illisible sous Windows pendant une exécution | P3 | Ouvert, documenté | A | À exclure des copies et déploiements |

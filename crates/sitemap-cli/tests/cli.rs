@@ -749,3 +749,55 @@ fn execution_mode_state_token_and_apply_plan() {
         "{text}"
     );
 }
+
+#[test]
+fn doctor_reports_checks_and_exit_codes() {
+    let temp = TempDir::new("doctor");
+    let out = temp.0.join("out");
+    let config = fixtures().join("partitioned/config.json");
+    let doctor = |extra: &[&str]| {
+        bin()
+            .args(["--format", "json", "doctor", "--config"])
+            .arg(&config)
+            .arg("--out")
+            .arg(&out)
+            .args(extra)
+            .output()
+            .unwrap()
+    };
+
+    let empty = doctor(&[]);
+    assert_eq!(code(&empty), 0);
+    assert_eq!(json(&empty)["status"], "ok");
+    assert!(!out.exists(), "doctor wrote the output directory");
+
+    let generated = bin()
+        .args(["generate", "--config"])
+        .arg(&config)
+        .arg("--out")
+        .arg(&out)
+        .output()
+        .unwrap();
+    assert_eq!(code(&generated), 0);
+    let healthy = json(&doctor(&[]));
+    assert_eq!(healthy["status"], "ok", "{healthy}");
+    assert!(healthy["stateToken"].is_string());
+
+    fs::create_dir(out.join(".advanced-sitemap-staging-1-0")).unwrap();
+    assert_eq!(code(&doctor(&[])), 0);
+    assert_eq!(code(&doctor(&["--deny-warnings"])), 1);
+    fs::remove_dir(out.join(".advanced-sitemap-staging-1-0")).unwrap();
+
+    fs::write(out.join("sitemap-1.xml"), "changed").unwrap();
+    let broken = doctor(&[]);
+    assert_eq!(code(&broken), 1);
+    let report = json(&broken);
+    assert_eq!(report["status"], "error");
+    let files = report["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == "files")
+        .unwrap();
+    assert_eq!(files["status"], "error", "{files}");
+}

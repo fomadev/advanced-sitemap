@@ -13,6 +13,10 @@ use crate::{SitemapUrl, W3cDateTime};
 /// `allow` or `deny`, the `relationship` attribute of `restriction` and
 /// `platform`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(
+    clippy::exhaustive_enums,
+    reason = "the video extension defines exactly allow and deny"
+)]
 pub enum Relationship {
     /// Only the listed values are allowed.
     Allow,
@@ -41,6 +45,10 @@ impl Relationship {
 
 /// A platform of `video:platform`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[allow(
+    clippy::exhaustive_enums,
+    reason = "the video extension defines exactly these platforms"
+)]
 pub enum Platform {
     /// Desktop and laptop browsers.
     Web,
@@ -99,6 +107,7 @@ impl fmt::Display for CountryCode {
 
 /// `video:restriction`: countries where the video may or may not be shown.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct VideoRestriction {
     /// `relationship` attribute.
     pub relationship: Relationship,
@@ -106,8 +115,19 @@ pub struct VideoRestriction {
     pub countries: Vec<CountryCode>,
 }
 
+impl VideoRestriction {
+    /// A restriction to (`Allow`) or from (`Deny`) `countries`.
+    pub fn new(relationship: Relationship, countries: Vec<CountryCode>) -> Self {
+        Self {
+            relationship,
+            countries,
+        }
+    }
+}
+
 /// `video:platform`: platforms where the video may or may not be shown.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct VideoPlatform {
     /// `relationship` attribute.
     pub relationship: Relationship,
@@ -115,8 +135,19 @@ pub struct VideoPlatform {
     pub platforms: Vec<Platform>,
 }
 
+impl VideoPlatform {
+    /// A restriction to (`Allow`) or from (`Deny`) `platforms`.
+    pub fn new(relationship: Relationship, platforms: Vec<Platform>) -> Self {
+        Self {
+            relationship,
+            platforms,
+        }
+    }
+}
+
 /// `video:uploader`.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct VideoUploader {
     /// Uploader name, at most 255 characters.
     pub name: String,
@@ -124,8 +155,19 @@ pub struct VideoUploader {
     pub info: Option<SitemapUrl>,
 }
 
+impl VideoUploader {
+    /// An uploader named `name`, with an optional page about them.
+    pub fn new(name: impl Into<String>, info: Option<SitemapUrl>) -> Self {
+        Self {
+            name: name.into(),
+            info,
+        }
+    }
+}
+
 /// A validated `video:video` element.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct Video {
     /// `video:thumbnail_loc` (required).
     pub thumbnail_loc: SitemapUrl,
@@ -172,12 +214,44 @@ impl Video {
         description: impl Into<String>,
         content_loc: SitemapUrl,
     ) -> Self {
+        Self::with_locations(
+            thumbnail_loc,
+            title.into(),
+            description.into(),
+            Some(content_loc),
+            None,
+        )
+    }
+
+    /// A video with its required fields and a player URL.
+    pub fn with_player(
+        thumbnail_loc: SitemapUrl,
+        title: impl Into<String>,
+        description: impl Into<String>,
+        player_loc: SitemapUrl,
+    ) -> Self {
+        Self::with_locations(
+            thumbnail_loc,
+            title.into(),
+            description.into(),
+            None,
+            Some(player_loc),
+        )
+    }
+
+    fn with_locations(
+        thumbnail_loc: SitemapUrl,
+        title: String,
+        description: String,
+        content_loc: Option<SitemapUrl>,
+        player_loc: Option<SitemapUrl>,
+    ) -> Self {
         Self {
             thumbnail_loc,
-            title: title.into(),
-            description: description.into(),
-            content_loc: Some(content_loc),
-            player_loc: None,
+            title,
+            description,
+            content_loc,
+            player_loc,
             duration: None,
             expiration_date: None,
             rating: None,

@@ -5,8 +5,9 @@ défaut ouvert connu) ; **NEEDS HARDENING** (fonctionne et testé, mais un
 point de production reste ouvert) ; **EXPERIMENTAL** (fonctionne, contrat
 susceptible de changer) ; **BLOCKED** (dépend d'une décision).
 
-READY ne veut pas dire « certifié » : aucun composant n'a encore été
-fuzzé (R10), et l'API Rust n'est pas stabilisée (R17).
+READY ne veut pas dire « certifié » : aucune version n'est publiée, et
+la compatibilité d'API n'est vérifiée automatiquement qu'à partir de la
+première (voir `semver-policy.md`).
 
 | Composant | Statut | Preuves | Ce qui manque |
 |---|---|---|---|
@@ -19,12 +20,12 @@ fuzzé (R10), et l'API Rust n'est pas stabilisée (R17).
 | hreflang (validation, réciprocité) | READY | Codes dédiés ; coût mesuré (110 octets par lien) | — |
 | robots.txt (`sitemap-robots`) | READY | RFC 9309, sortie déterministe, 5 tests | Peu de tests (5) |
 | Lecteur sécurisé (`sitemap-reader`, `inspect`) | READY | DOCTYPE refusé, bornes de taille décompressée, profondeur, texte ; 23 tests adversariaux ; fuzzing XML et gzip (2,4 M de mutations sans défaut) | Pas de lecture distante (choix) |
-| Protocole JSON (`sitemap-protocol`) | NEEDS HARDENING | Versions 1.0/1.1, schémas JSON, champs inconnus refusés ; fuzzing des configurations, enregistrements et flux | Politique de dépréciation à écrire (E) |
+| Protocole JSON (`sitemap-protocol`) | NEEDS HARDENING | Versions 1.0/1.1, schémas JSON, champs inconnus refusés ; fuzzing des configurations, enregistrements et flux ; politique de compatibilité et de dépréciation (`semver-policy.md`) ; règles de configuration documentées | ADR à approuver (R18) |
 | Snapshot et `diff` (`sitemap-snapshot`) | NEEDS HARDENING | Format v2 relié à la publication (v1 toujours lu) ; somme BLAKE3 ; tri externe borné ; vecteurs figés ; détection des corruptions et des snapshots périmés ; décodeur fuzzé (800 000 mutations, aucun fichier modifié accepté) | ADR-0011 à approuver (R18) |
 | `consistent-hash` et coût de migration | EXPERIMENTAL | Implémenté, mesuré (4,0 % d'URL déplacées de 24 à 25 partitions) ; prédiction égale au résultat | ADR-0012 à approuver |
 | Mode delta (`apply`) | EXPERIMENTAL | Oracle I1 aléatoire et vérification à 1 M d'URL ; refus avant écriture ; verrou (lot A) ; snapshot relié à la publication (lot B) ; flux borné (lot C) | ADR-0013 à approuver |
 | Planner / `explain` | NEEDS HARDENING | Mode `auto`, plan d'exécution avec préconditions et coûts, `explain --changes`, jeton d'état vérifié sous verrou ; estimations comparées aux mesures (décisions justes dans tous les cas mesurés) | Calibration sur une seule machine (R23) ; réserves en octets et en news |
-| CLI (`sitemap-cli`) | READY | 14 tests de bout en bout ; JSON et humain ; codes 0 à 4 documentés | `doctor` à évaluer (E) |
-| API Rust publique | EXPERIMENTAL | Utilisable et documentée (`cargo doc` sans avertissement) | Stabilisation, `#[non_exhaustive]`, erreurs typées complètes (R17) |
+| CLI (`sitemap-cli`) | READY | 15 tests de bout en bout ; JSON et humain ; codes 0 à 4 et `error.kind` documentés ; `doctor` (contrôle en lecture seule) | — |
+| API Rust publique | NEEDS HARDENING | Types publics `#[non_exhaustive]` (clippy l'impose), constructeurs, `EngineError::kind`/`source`/`is_retryable`, `Engine::doctor` ; politique SemVer ; codes de diagnostic figés par test | Comparaison d'API automatique après la première version (F) ; ADR à approuver (R18) |
 | Bindings (Node, Python, PHP) | BLOCKED | Non commencés, hors périmètre de la version stable du cœur | Stabilisation du protocole et de l'API |
 | Distribution (crates.io, binaires) | BLOCKED | `publish = false` partout | Licence (R19), décision de publication |

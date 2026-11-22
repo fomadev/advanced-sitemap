@@ -41,6 +41,7 @@ impl fmt::Display for NewsLanguage {
 
 /// A validated `news:news` element.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct News {
     /// `news:publication/news:name`: the publication name as shown on Google
     /// News, without anything in parentheses.
@@ -51,6 +52,23 @@ pub struct News {
     pub publication_date: W3cDateTime,
     /// `news:title`: the article title as shown on the site.
     pub title: String,
+}
+
+impl News {
+    /// News metadata for an article.
+    pub fn new(
+        publication_name: impl Into<String>,
+        language: NewsLanguage,
+        publication_date: W3cDateTime,
+        title: impl Into<String>,
+    ) -> Self {
+        Self {
+            publication_name: publication_name.into(),
+            language,
+            publication_date,
+            title: title.into(),
+        }
+    }
 }
 
 #[cfg(test)]

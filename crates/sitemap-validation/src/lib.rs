@@ -22,6 +22,7 @@ use sitemap_model::{
 
 /// Validation profile.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ValidationMode {
     /// Protocol conformance. Best-practice findings are warnings or recommendations.
     #[default]
@@ -31,8 +32,19 @@ pub enum ValidationMode {
     Strict,
 }
 
+impl ValidationMode {
+    /// Name of the profile, as written in configuration documents.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ValidationMode::Standard => "standard",
+            ValidationMode::Strict => "strict",
+        }
+    }
+}
+
 /// Validator configuration.
 #[derive(Clone, Debug, Default)]
+#[non_exhaustive]
 pub struct ValidationOptions {
     /// Profile.
     pub mode: ValidationMode,
@@ -256,16 +268,17 @@ impl Validator {
 
         let has_error = out[first..].iter().any(Diagnostic::is_error);
         match loc {
-            Some(loc) if !has_error => Some(UrlEntry {
-                loc,
-                lastmod,
-                changefreq,
-                priority,
-                alternates,
-                images,
-                videos,
-                news,
-            }),
+            Some(loc) if !has_error => {
+                let mut entry = UrlEntry::new(loc);
+                entry.lastmod = lastmod;
+                entry.changefreq = changefreq;
+                entry.priority = priority;
+                entry.alternates = alternates;
+                entry.images = images;
+                entry.videos = videos;
+                entry.news = news;
+                Some(entry)
+            }
             _ => None,
         }
     }
@@ -344,7 +357,7 @@ impl Validator {
                 );
             }
             if let (Some(hreflang), Some(href)) = (tag, href) {
-                alternates.push(Alternate { hreflang, href });
+                alternates.push(Alternate::new(hreflang, href));
             }
         }
 
@@ -394,7 +407,7 @@ impl Validator {
                 None => self.emit(out, missing(location, &field)),
                 Some(value) => {
                     if let Some(loc) = self.parse_url(value, location, &field, out) {
-                        images.push(Image { loc });
+                        images.push(Image::new(loc));
                     }
                 }
             }
@@ -429,7 +442,7 @@ impl Validator {
                         DiagnosticCode::UrlInvalid,
                         "Trim surrounding whitespace and percent-encode inner spaces as %20.",
                     ),
-                    UrlError::Empty | UrlError::ContainsControlCharacter | UrlError::Parse(_) => (
+                    _ => (
                         DiagnosticCode::UrlInvalid,
                         "Fix the URL so that it is a valid absolute URL.",
                     ),
@@ -475,26 +488,30 @@ mod tests {
 
     #[test]
     fn valid_full_record() {
-        let raw = RawUrlRecord {
-            loc: Some("https://example.com/fr/".into()),
-            lastmod: Some("2026-11-21".into()),
-            changefreq: Some("weekly".into()),
-            priority: Some(0.8),
-            alternates: vec![
-                RawAlternate {
-                    hreflang: Some("fr".into()),
-                    href: Some("https://example.com/fr/".into()),
-                },
-                RawAlternate {
-                    hreflang: Some("en".into()),
-                    href: Some("https://example.com/en/".into()),
-                },
-            ],
-            images: vec![RawImage {
-                loc: Some("https://cdn.example.com/a.png".into()),
-            }],
-            ..RawUrlRecord::default()
-        };
+        let mut raw = RawUrlRecord::default();
+        raw.loc = Some("https://example.com/fr/".into());
+        raw.lastmod = Some("2026-11-21".into());
+        raw.changefreq = Some("weekly".into());
+        raw.priority = Some(0.8);
+        raw.alternates = vec![
+            {
+                let mut this = RawAlternate::default();
+                this.hreflang = Some("fr".into());
+                this.href = Some("https://example.com/fr/".into());
+                this
+            },
+            {
+                let mut this = RawAlternate::default();
+                this.hreflang = Some("en".into());
+                this.href = Some("https://example.com/en/".into());
+                this
+            },
+        ];
+        raw.images = vec![{
+            let mut this = RawImage::default();
+            this.loc = Some("https://cdn.example.com/a.png".into());
+            this
+        }];
         let (entry, diagnostics) = run(&standard(), &raw);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let entry = entry.unwrap();
@@ -504,20 +521,22 @@ mod tests {
 
     #[test]
     fn collects_every_error_of_a_record() {
-        let raw = RawUrlRecord {
-            loc: None,
-            lastmod: Some("21/11/2026".into()),
-            changefreq: Some("Daily".into()),
-            priority: Some(1.5),
-            alternates: vec![RawAlternate {
-                hreflang: Some("english".into()),
-                href: None,
-            }],
-            images: vec![RawImage {
-                loc: Some("/a.png".into()),
-            }],
-            ..RawUrlRecord::default()
-        };
+        let mut raw = RawUrlRecord::default();
+        raw.loc = None;
+        raw.lastmod = Some("21/11/2026".into());
+        raw.changefreq = Some("Daily".into());
+        raw.priority = Some(1.5);
+        raw.alternates = vec![{
+            let mut this = RawAlternate::default();
+            this.hreflang = Some("english".into());
+            this.href = None;
+            this
+        }];
+        raw.images = vec![{
+            let mut this = RawImage::default();
+            this.loc = Some("/a.png".into());
+            this
+        }];
         let (entry, diagnostics) = run(&standard(), &raw);
         assert!(entry.is_none());
         assert_eq!(
@@ -588,10 +607,8 @@ mod tests {
 
     #[test]
     fn future_lastmod_needs_reference_time() {
-        let raw = RawUrlRecord {
-            lastmod: Some("2030-01-01".into()),
-            ..RawUrlRecord::with_loc("https://example.com/")
-        };
+        let mut raw = RawUrlRecord::with_loc("https://example.com/");
+        raw.lastmod = Some("2030-01-01".into());
         let (_, diagnostics) = run(&standard(), &raw);
         assert!(diagnostics.is_empty());
 
@@ -606,19 +623,21 @@ mod tests {
 
     #[test]
     fn alternate_rules() {
-        let raw = RawUrlRecord {
-            alternates: vec![
-                RawAlternate {
-                    hreflang: Some("en".into()),
-                    href: Some("https://example.com/en".into()),
-                },
-                RawAlternate {
-                    hreflang: Some("EN".into()),
-                    href: Some("https://example.com/en2".into()),
-                },
-            ],
-            ..RawUrlRecord::with_loc("https://example.com/fr")
-        };
+        let mut raw = RawUrlRecord::with_loc("https://example.com/fr");
+        raw.alternates = vec![
+            {
+                let mut this = RawAlternate::default();
+                this.hreflang = Some("en".into());
+                this.href = Some("https://example.com/en".into());
+                this
+            },
+            {
+                let mut this = RawAlternate::default();
+                this.hreflang = Some("EN".into());
+                this.href = Some("https://example.com/en2".into());
+                this
+            },
+        ];
         let (entry, diagnostics) = run(&standard(), &raw);
         assert!(entry.is_some());
         assert_eq!(
@@ -629,14 +648,14 @@ mod tests {
 
     #[test]
     fn image_limit() {
-        let raw = RawUrlRecord {
-            images: (0..=MAX_IMAGES_PER_URL)
-                .map(|i| RawImage {
-                    loc: Some(format!("https://cdn.example.com/{i}.png")),
-                })
-                .collect(),
-            ..RawUrlRecord::with_loc("https://example.com/")
-        };
+        let mut raw = RawUrlRecord::with_loc("https://example.com/");
+        raw.images = (0..=MAX_IMAGES_PER_URL)
+            .map(|i| {
+                let mut this = RawImage::default();
+                this.loc = Some(format!("https://cdn.example.com/{i}.png"));
+                this
+            })
+            .collect();
         let (entry, diagnostics) = run(&standard(), &raw);
         assert!(entry.is_none());
         assert_eq!(codes(&diagnostics), ["IMAGE_LIMIT_EXCEEDED"]);

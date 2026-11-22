@@ -44,6 +44,8 @@ missing_docs = "warn"
 unwrap_used = "warn"
 expect_used = "warn"
 panic = "warn"
+exhaustive_enums = "warn"
+exhaustive_structs = "warn"
 
 [profile.release]
 debug = "line-tables-only"

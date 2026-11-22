@@ -67,6 +67,7 @@ pub use jump::jump_consistent_hash;
 
 /// How entries are assigned to partitions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum PartitionStrategy {
     /// Fill partitions in input order; open a new one when a limit is reached.
     Sequential,
@@ -184,6 +185,7 @@ impl Default for PartitionLimits {
 
 /// A closed partition, staged in the store.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct PartitionSummary {
     /// 1-based partition number.
     pub id: u32,
@@ -199,8 +201,24 @@ pub struct PartitionSummary {
     pub digest: Option<FileDigest>,
 }
 
+impl PartitionSummary {
+    /// Partition `id`, staged as `staged_name`, holding `urls` URLs in
+    /// `bytes` bytes; no `lastmod` and no digest yet.
+    pub fn new(id: u32, staged_name: ArtifactName, urls: u64, bytes: u64) -> Self {
+        PartitionSummary {
+            id,
+            staged_name,
+            urls,
+            bytes,
+            lastmod: None,
+            digest: None,
+        }
+    }
+}
+
 /// Why an entry could not be placed.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum PushError {
     /// The entry alone exceeds the byte limit of a file.
     EntryTooLarge {
@@ -507,6 +525,10 @@ pub fn partition_name(stem: &str, id: u32) -> io::Result<ArtifactName> {
 
 /// When to produce a sitemap index.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[allow(
+    clippy::exhaustive_enums,
+    reason = "auto, always and never cover every index policy"
+)]
 pub enum IndexMode {
     /// Only when there is more than one partition.
     #[default]
@@ -551,6 +573,7 @@ impl PublicBaseUrl {
 
 /// Output layout settings.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct Layout {
     /// File stem (`sitemap` gives `sitemap.xml`, `sitemap-1.xml`...).
     pub stem: String,
@@ -561,6 +584,16 @@ pub struct Layout {
 }
 
 impl Layout {
+    /// A layout with file stem `stem`, an index only when needed and no
+    /// public base URL.
+    pub fn new(stem: impl Into<String>) -> Self {
+        Layout {
+            stem: stem.into(),
+            index: IndexMode::Auto,
+            public_base_url: None,
+        }
+    }
+
     /// Name of the single sitemap or of the index: `<stem>.xml`.
     pub fn main_name(&self) -> io::Result<ArtifactName> {
         ArtifactName::new(format!("{}.xml", self.stem)).map_err(|e| io::Error::other(e.to_string()))
@@ -569,6 +602,7 @@ impl Layout {
 
 /// What to publish.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct LayoutPlan {
     /// Partition publications, in order.
     pub partitions: Vec<Publication>,
@@ -578,6 +612,7 @@ pub struct LayoutPlan {
 
 /// The layout cannot be produced.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum LayoutError {
     /// An index is needed but no public base URL is configured.
     PublicBaseUrlMissing {
@@ -627,17 +662,11 @@ pub fn plan_layout(
 
     if !needs_index {
         let publications = if partitions.len() == 1 && layout.index == IndexMode::Auto {
-            vec![Publication {
-                staged: partitions[0].staged_name.clone(),
-                target: main,
-            }]
+            vec![Publication::new(partitions[0].staged_name.clone(), main)]
         } else {
             partitions
                 .iter()
-                .map(|p| Publication {
-                    staged: p.staged_name.clone(),
-                    target: p.staged_name.clone(),
-                })
+                .map(|p| Publication::new(p.staged_name.clone(), p.staged_name.clone()))
                 .collect()
         };
         return Ok(LayoutPlan {
@@ -665,14 +694,11 @@ pub fn plan_layout(
             .url()
             .join(partition.staged_name.as_str())
             .map_err(|e| LayoutError::InvalidName(e.to_string()))?;
-        entries.push(IndexEntry {
-            loc,
-            lastmod: partition.lastmod.clone(),
-        });
-        publications.push(Publication {
-            staged: partition.staged_name.clone(),
-            target: partition.staged_name.clone(),
-        });
+        entries.push(IndexEntry::new(loc, partition.lastmod.clone()));
+        publications.push(Publication::new(
+            partition.staged_name.clone(),
+            partition.staged_name.clone(),
+        ));
     }
     Ok(LayoutPlan {
         partitions: publications,
@@ -707,12 +733,12 @@ mod tests {
     }
 
     fn news_entry(i: usize) -> UrlEntry {
-        entry(i).with_news(sitemap_model::News {
-            publication_name: "The Example Times".to_owned(),
-            language: sitemap_model::NewsLanguage::parse("en").unwrap(),
-            publication_date: W3cDateTime::parse("2026-11-21").unwrap(),
-            title: format!("Article {i}"),
-        })
+        entry(i).with_news(sitemap_model::News::new(
+            "The Example Times",
+            sitemap_model::NewsLanguage::parse("en").unwrap(),
+            W3cDateTime::parse("2026-11-21").unwrap(),
+            format!("Article {i}"),
+        ))
     }
 
     fn push_mixed(
@@ -720,10 +746,8 @@ mod tests {
         count: usize,
     ) -> Result<Vec<PartitionSummary>, PushError> {
         let mut store = MemoryStore::new();
-        let namespaces = Namespaces {
-            news: true,
-            ..Namespaces::NONE
-        };
+        let mut namespaces = Namespaces::NONE;
+        namespaces.news = true;
         let mut partitioner = Partitioner::new(
             &mut store,
             strategy,

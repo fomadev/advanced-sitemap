@@ -12,12 +12,11 @@ use advanced_sitemap::{
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
+    let mut strict = ValidationOptions::default();
+    strict.mode = ValidationMode::Strict;
     let validators = [
         Validator::new(ValidationOptions::default()),
-        Validator::new(ValidationOptions {
-            mode: ValidationMode::Strict,
-            ..ValidationOptions::default()
-        }),
+        Validator::new(strict),
     ];
     for item in JsonlReader::with_max_line_bytes(Cursor::new(data), 1 << 16) {
         let Ok(record) = item else { continue };

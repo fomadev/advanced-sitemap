@@ -26,6 +26,7 @@ pub struct SitemapUrl {
 
 /// Why a string is not a valid [`SitemapUrl`].
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum UrlError {
     /// The input is empty.
     Empty,

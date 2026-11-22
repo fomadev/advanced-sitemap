@@ -209,12 +209,11 @@ fn gzip(bytes: &[u8]) -> Vec<u8> {
 /// Reader property: never panics, respects its limits, and every entry it
 /// accepts encodes to a block that reads back to the same block.
 fn check_reader(input: &[u8]) {
-    let options = InspectOptions {
-        limits: ReaderLimits {
-            max_bytes: 1 << 20,
-            ..ReaderLimits::default()
-        },
-        ..InspectOptions::default()
+    let mut options = InspectOptions::default();
+    options.limits = {
+        let mut this = ReaderLimits::default();
+        this.max_bytes = 1 << 20;
+        this
     };
     let mut blocks = Vec::new();
     let report = inspect_reader("fuzz", input, &options, |item| {
@@ -262,12 +261,11 @@ fn decompression_bombs_stop_at_the_limit() {
     let zeros = vec![b' '; 64 << 20];
     let bomb = gzip(&zeros);
     assert!(bomb.len() < 1 << 20);
-    let options = InspectOptions {
-        limits: ReaderLimits {
-            max_bytes: 1 << 20,
-            ..ReaderLimits::default()
-        },
-        ..InspectOptions::default()
+    let mut options = InspectOptions::default();
+    options.limits = {
+        let mut this = ReaderLimits::default();
+        this.max_bytes = 1 << 20;
+        this
     };
     let report = inspect_reader("bomb", &bomb[..], &options, |_| {}).unwrap();
     assert!(!report.complete);
@@ -291,9 +289,10 @@ fn jsonl_seeds() -> Vec<Vec<u8>> {
 /// accepted record encodes to a block that the reader reads back exactly.
 #[test]
 fn fuzz_url_records() {
-    let strict = Validator::new(ValidationOptions {
-        mode: ValidationMode::Strict,
-        ..ValidationOptions::default()
+    let strict = Validator::new({
+        let mut this = ValidationOptions::default();
+        this.mode = ValidationMode::Strict;
+        this
     });
     let standard = Validator::new(ValidationOptions::default());
     fuzz(3, "url-records", &jsonl_seeds(), |input| {
@@ -397,14 +396,15 @@ fn fuzz_robots() {
     fuzz(7, "robots", &seeds, |input| {
         let text = String::from_utf8_lossy(input);
         let mut parts = text.split('|').map(str::to_owned);
-        let config = RobotsConfig {
-            groups: vec![RobotsGroup {
-                user_agents: parts.next().into_iter().collect(),
-                disallow: parts.next().into_iter().collect(),
-                allow: parts.next().into_iter().collect(),
-            }],
-            sitemaps: parts.collect(),
-        };
+        let mut config = RobotsConfig::default();
+        config.groups = vec![{
+            let mut this = RobotsGroup::default();
+            this.user_agents = parts.next().into_iter().collect();
+            this.disallow = parts.next().into_iter().collect();
+            this.allow = parts.next().into_iter().collect();
+            this
+        }];
+        config.sitemaps = parts.collect();
         let (built, _) = config.build();
         if let Some(robots) = built {
             let (text, _) = robots.render_checked();

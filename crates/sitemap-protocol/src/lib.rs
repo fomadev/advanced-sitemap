@@ -41,6 +41,7 @@ pub const REPORT_SCHEMA_VERSION: &str = "1.0";
 
 /// A document cannot be used.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum ProtocolError {
     /// `schemaVersion` is missing, malformed or unsupported.
     UnsupportedVersion(String),
@@ -68,7 +69,14 @@ impl fmt::Display for ProtocolError {
     }
 }
 
-impl std::error::Error for ProtocolError {}
+impl std::error::Error for ProtocolError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ProtocolError::Io(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 
 impl From<std::io::Error> for ProtocolError {
     fn from(error: std::io::Error) -> Self {

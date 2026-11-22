@@ -24,6 +24,7 @@ pub struct SitemapBuilder {
 
 /// Why a [`Sitemap`] cannot be built or serialized.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum SitemapError {
     /// More than 50,000 URLs.
     TooManyUrls {
@@ -63,7 +64,14 @@ impl fmt::Display for SitemapError {
     }
 }
 
-impl std::error::Error for SitemapError {}
+impl std::error::Error for SitemapError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            SitemapError::Xml(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 
 impl From<XmlError> for SitemapError {
     fn from(error: XmlError) -> Self {

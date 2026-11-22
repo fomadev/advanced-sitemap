@@ -17,6 +17,7 @@ use sitemap_model::RawUrlRecord;
 // Records are decoded and consumed one at a time; boxing would only add an
 // allocation per operation.
 #[allow(clippy::large_enum_variant)]
+#[non_exhaustive]
 pub enum ChangeRecord {
     /// Adds the URL, or replaces every field of an existing one.
     Upsert {

@@ -17,14 +17,14 @@ fn records(n: u64, sorted: bool) -> Vec<Record> {
         .map(|i| {
             // Scattered order unless sorted, like a real source.
             let id = if sorted { i } else { (i * 7_919) % n };
-            Record {
-                loc: format!(
+            Record::new(
+                format!(
                     "https://shop.example.com/catalog/category-{}/product-{id}.html",
                     id % 97
                 ),
-                content: digest128(&id.to_le_bytes()),
-                partition: (id % 24) as u32 + 1,
-            }
+                digest128(&id.to_le_bytes()),
+                (id % 24) as u32 + 1,
+            )
         })
         .collect();
     if sorted {

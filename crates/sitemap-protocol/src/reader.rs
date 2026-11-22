@@ -15,6 +15,7 @@ pub const DEFAULT_MAX_DOCUMENT_BYTES: u64 = 256 * 1024 * 1024;
 
 /// Why a record could not be decoded.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DecodeError {
     /// Malformed JSON, wrong type or unknown field.
     Json(String),
@@ -39,6 +40,7 @@ impl fmt::Display for DecodeError {
 /// One item read from a source. `T` is [`RawUrlRecord`] for URL sources and
 /// [`crate::ChangeRecord`] for change feeds.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct SourceRecord<T = RawUrlRecord> {
     /// 1-based record number.
     pub record: u64,
@@ -46,6 +48,18 @@ pub struct SourceRecord<T = RawUrlRecord> {
     pub line: Option<u64>,
     /// The decoded record, or why it could not be decoded.
     pub result: Result<T, DecodeError>,
+}
+
+impl<T> SourceRecord<T> {
+    /// Record number `record` (1-based), read from `line` when the source is
+    /// line-oriented.
+    pub fn new(record: u64, line: Option<u64>, result: Result<T, DecodeError>) -> Self {
+        SourceRecord {
+            record,
+            line,
+            result,
+        }
+    }
 }
 
 /// Streams records from JSON Lines: one JSON object per line. Blank lines are

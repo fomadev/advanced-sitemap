@@ -5,6 +5,10 @@ use std::str::FromStr;
 ///
 /// Supported for compatibility; Google documents that it ignores this field.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[allow(
+    clippy::exhaustive_enums,
+    reason = "the sitemaps.org protocol defines exactly these values"
+)]
 pub enum ChangeFreq {
     /// `always`
     Always,
@@ -51,6 +55,7 @@ impl ChangeFreq {
 /// The value is not one of the protocol keywords (matching is case-sensitive,
 /// as in the sitemaps.org XML schema).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct ChangeFreqError;
 
 impl fmt::Display for ChangeFreqError {
@@ -90,6 +95,7 @@ pub struct Priority(f64);
 
 /// The value is not a finite number between 0.0 and 1.0.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct PriorityError {
     /// The rejected value.
     pub value: f64,

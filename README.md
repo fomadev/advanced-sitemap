@@ -45,8 +45,9 @@ Next.js, Nuxt, Laravel, Django and others.
 - URL-level snapshot (`--state-dir`) with a change report, and
   `--skip-unchanged`, which republishes only files whose bytes changed.
 - Output that is identical byte for byte on every platform for the same input.
-- A CLI with `generate`, `validate`, `explain`, `inspect`, `diff` and
-  `apply`, human or JSON output, and stable exit codes.
+- A CLI with `generate`, `validate`, `explain`, `inspect`, `diff`, `apply`
+  and `doctor` (a read-only health check of the published files and the
+  state), human or JSON output, and stable exit codes.
 - A versioned JSON protocol (`schemaVersion` 1.0 and 1.1) with JSON Schemas.
 
 Not available yet: automatic choice between full, skip-unchanged and delta

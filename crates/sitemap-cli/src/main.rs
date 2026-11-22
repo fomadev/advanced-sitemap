@@ -24,8 +24,8 @@ use advanced_sitemap::protocol::{
 };
 use advanced_sitemap::{
     ConfigDocument, Diagnostic, Engine, EngineError, FsStore, GenerationReport, InspectOptions,
-    NullStore, ReaderLimits, ResolvedConfig, RunMode, SeverityCounts, SitemapUrl, ValidationMode,
-    ValidationOptions, W3cDateTime, limits, open_input, resolve_config,
+    NullStore, ResolvedConfig, RunMode, SeverityCounts, SitemapUrl, ValidationMode, W3cDateTime,
+    limits, open_input, resolve_config,
 };
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
@@ -130,6 +130,19 @@ enum Command {
         /// default 500000; about 800 bytes of memory each).
         #[arg(long)]
         max_operations: Option<u64>,
+        /// Exit with code 1 when warnings are reported.
+        #[arg(long)]
+        deny_warnings: bool,
+    },
+    /// Check the output and state directories against the configuration:
+    /// running process, interrupted run, published files against the
+    /// manifest, snapshot freshness. Writes nothing.
+    Doctor {
+        #[command(flatten)]
+        common: CommonArgs,
+        /// Output directory to check (overrides output.directory).
+        #[arg(long, short)]
+        out: Option<PathBuf>,
         /// Exit with code 1 when warnings are reported.
         #[arg(long)]
         deny_warnings: bool,
@@ -280,13 +293,11 @@ struct Failure {
 
 impl From<EngineError> for Failure {
     fn from(error: EngineError) -> Self {
-        let (code, kind) = match &error {
-            EngineError::Config(_) | EngineError::Protocol(_) => (EXIT_CONFIG, "config"),
-            EngineError::Io(_) => (EXIT_IO, "io"),
-            EngineError::Xml(_) => (EXIT_INTERNAL, "internal"),
-            EngineError::DeltaRefused(_) => (EXIT_CONFIG, "delta-refused"),
-            EngineError::Busy(_) => (EXIT_IO, "busy"),
-            EngineError::StateChanged { .. } => (EXIT_CONFIG, "state-changed"),
+        let kind = error.kind();
+        let code = match kind {
+            "config" | "delta-refused" | "state-changed" => EXIT_CONFIG,
+            "io" | "busy" => EXIT_IO,
+            _ => EXIT_INTERNAL,
         };
         Failure {
             code,
@@ -358,11 +369,9 @@ fn load_config(common: &CommonArgs, out: Option<&Path>) -> Result<ResolvedConfig
             ))
         })?;
         doc.urls = None;
-        doc.source = Some(SourceSection {
-            format: Some(format),
-            path: text,
-            max_line_bytes: None,
-        });
+        let mut source = SourceSection::new(text);
+        source.format = Some(format);
+        doc.source = Some(source);
     }
     if let Some(site) = &common.site {
         doc.site = Some(site.clone());
@@ -389,11 +398,12 @@ fn load_config(common: &CommonArgs, out: Option<&Path>) -> Result<ResolvedConfig
         doc.validation.hreflang_reciprocity = true;
     }
     if let Some(dir) = &common.state_dir {
-        doc.state = Some(StateSection {
-            directory: absolute(dir)?.to_string_lossy().into_owned(),
-            max_listed: doc.state.as_ref().and_then(|s| s.max_listed),
-            max_feed_operations: doc.state.as_ref().and_then(|s| s.max_feed_operations),
-        });
+        let mut state = StateSection::new(absolute(dir)?.to_string_lossy());
+        if let Some(previous) = &doc.state {
+            state.max_listed = previous.max_listed;
+            state.max_feed_operations = previous.max_feed_operations;
+        }
+        doc.state = Some(state);
     }
     if let Some(max) = common.max_diagnostics {
         doc.validation.max_diagnostics = max;
@@ -481,6 +491,11 @@ fn run_engine(resolved: ResolvedConfig, mode: RunMode) -> Result<GenerationRepor
             engine.run(source, &mut store, mode)?
         }
         RunMode::DryRun => engine.run(source, &mut NullStore::new(), mode)?,
+        other => {
+            return Err(config_failure(format!(
+                "run mode {other:?} is not supported"
+            )));
+        }
     };
     Ok(report)
 }
@@ -583,6 +598,20 @@ fn main() -> ExitCode {
             let report = run_apply(&resolved, &changes, mode)?;
             Ok(finish_report("apply", &report, format, deny_warnings))
         }),
+        Command::Doctor {
+            common,
+            out,
+            deny_warnings,
+        } => load_config(&common, out.as_deref()).and_then(|resolved| {
+            let engine = Engine::new(resolved.engine)?;
+            let report = engine.doctor(&resolved.output_dir);
+            print_doctor(&report, format);
+            if report.has_errors() || (deny_warnings && report.has_warnings()) {
+                Ok(ExitCode::from(EXIT_FAILED))
+            } else {
+                Ok(ExitCode::SUCCESS)
+            }
+        }),
         Command::Inspect(args) => run_inspect(&args, format),
         Command::Diff(args) => run_diff(&args, format),
     };
@@ -623,22 +652,15 @@ fn inspect_options(args: &InspectArgs) -> Result<InspectOptions, Failure> {
     if max_bytes == 0 {
         return Err(config_failure("--max-bytes must be at least 1"));
     }
-    Ok(InspectOptions {
-        limits: ReaderLimits {
-            max_bytes,
-            ..ReaderLimits::default()
-        },
-        validation: ValidationOptions {
-            mode: if args.strict {
-                ValidationMode::Strict
-            } else {
-                ValidationMode::Standard
-            },
-            site,
-            reference_time,
-        },
-        dedupe: !args.no_dedupe,
-    })
+    let mut options = InspectOptions::default();
+    options.limits.max_bytes = max_bytes;
+    if args.strict {
+        options.validation.mode = ValidationMode::Strict;
+    }
+    options.validation.site = site;
+    options.validation.reference_time = reference_time;
+    options.dedupe = !args.no_dedupe;
+    Ok(options)
 }
 
 fn run_inspect(args: &InspectArgs, format: Format) -> Result<ExitCode, Failure> {
@@ -696,13 +718,8 @@ fn run_diff(args: &DiffArgs, format: Format) -> Result<ExitCode, Failure> {
     if max_bytes == 0 {
         return Err(config_failure("--max-bytes must be at least 1"));
     }
-    let options = InspectOptions {
-        limits: ReaderLimits {
-            max_bytes,
-            ..ReaderLimits::default()
-        },
-        ..InspectOptions::default()
-    };
+    let mut options = InspectOptions::default();
+    options.limits.max_bytes = max_bytes;
     let old = sitemap_files(&args.old).map_err(io_failure)?;
     let new = sitemap_files(&args.new).map_err(io_failure)?;
     for (side, files, path) in [("old", &old, &args.old), ("new", &new, &args.new)] {
@@ -988,6 +1005,45 @@ fn print_plan(plan: &Plan, format: Format) {
     print_execution(&plan.execution);
     for note in &plan.notes {
         println!("  Note               {note}");
+    }
+}
+
+fn print_doctor(report: &advanced_sitemap::DoctorReport, format: Format) {
+    match format {
+        Format::Json => {
+            let status = if report.has_errors() {
+                "error"
+            } else if report.has_warnings() {
+                "warning"
+            } else {
+                "ok"
+            };
+            let value = serde_json::json!({
+                "schemaVersion": "1.0",
+                "engineVersion": advanced_sitemap::ENGINE_VERSION,
+                "command": "doctor",
+                "status": status,
+                "checks": report.checks,
+                "stateToken": report.state_token,
+            });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&value).unwrap_or_default()
+            );
+        }
+        Format::Human => {
+            println!("advanced-sitemap doctor (nothing is written)");
+            for check in &report.checks {
+                let status = check.status.as_str();
+                println!("  {status:<8} {:<17} {}", check.name, check.message);
+                if let Some(suggestion) = &check.suggestion {
+                    println!("  {:<8} {:<17} {suggestion}", "", "");
+                }
+            }
+            if let Some(token) = &report.state_token {
+                println!("  state token: {token}");
+            }
+        }
     }
 }
 

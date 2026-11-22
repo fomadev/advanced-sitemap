@@ -29,6 +29,7 @@ pub struct ArtifactName(String);
 
 /// The name is not a safe artifact name.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct InvalidArtifactName(pub String);
 
 impl fmt::Display for InvalidArtifactName {
@@ -80,6 +81,7 @@ pub trait ArtifactWriter: Write {
 
 /// One step of a publication: move a staged artifact to its public name.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Publication {
     /// Name used when staging.
     pub staged: ArtifactName,
@@ -87,8 +89,16 @@ pub struct Publication {
     pub target: ArtifactName,
 }
 
+impl Publication {
+    /// Moves the artifact staged as `staged` to `target`.
+    pub fn new(staged: ArtifactName, target: ArtifactName) -> Self {
+        Self { staged, target }
+    }
+}
+
 /// Description of a store, for reports.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct StoreDescription {
     /// Store kind, e.g. `local-fs` or `memory`.
     pub kind: &'static str,
@@ -193,6 +203,22 @@ impl DirectoryLock {
     /// Path of the lock file.
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// Whether another process holds the lock `<dir>/<name>` right now.
+    /// Creates nothing: a missing directory or lock file means not held.
+    /// The answer can change as soon as it is returned.
+    pub fn is_held(dir: &Path, name: &str) -> io::Result<bool> {
+        let file = match fs::OpenOptions::new().read(true).open(dir.join(name)) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(error),
+        };
+        match file.try_lock() {
+            Ok(()) => Ok(false),
+            Err(fs::TryLockError::WouldBlock) => Ok(true),
+            Err(fs::TryLockError::Error(error)) => Err(error),
+        }
     }
 }
 

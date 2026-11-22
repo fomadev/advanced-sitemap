@@ -51,10 +51,8 @@ impl Drop for StateDir {
 }
 
 fn config(strategy: PartitionStrategy, state: &StateDir) -> EngineConfig {
-    let mut config = EngineConfig {
-        strategy,
-        ..EngineConfig::default()
-    };
+    let mut config = EngineConfig::default();
+    config.strategy = strategy;
     config.layout.public_base_url = Some(
         PublicBaseUrl::new(SitemapUrl::new("https://example.com/sitemaps/").unwrap()).unwrap(),
     );
@@ -65,21 +63,24 @@ fn config(strategy: PartitionStrategy, state: &StateDir) -> EngineConfig {
 }
 
 fn record(id: u64, version: u64) -> RawUrlRecord {
-    RawUrlRecord {
-        loc: Some(format!("https://example.com/p/{id}")),
-        lastmod: Some(format!(
+    {
+        let mut this = RawUrlRecord::default();
+        this.loc = Some(format!("https://example.com/p/{id}"));
+        this.lastmod = Some(format!(
             "2026-{:02}-{:02}",
             1 + version % 12,
             1 + version % 28
-        )),
-        images: if version % 3 == 1 {
-            vec![RawImage {
-                loc: Some(format!("https://example.com/img/{id}-{version}.png")),
+        ));
+        this.images = if version % 3 == 1 {
+            vec![{
+                let mut this = RawImage::default();
+                this.loc = Some(format!("https://example.com/img/{id}-{version}.png"));
+                this
             }]
         } else {
             Vec::new()
-        },
-        ..RawUrlRecord::default()
+        };
+        this
     }
 }
 
@@ -102,11 +103,11 @@ fn feed(changes: Vec<ChangeRecord>) -> Vec<io::Result<SourceRecord<ChangeRecord>
         .into_iter()
         .enumerate()
         .map(|(i, change)| {
-            Ok(SourceRecord {
-                record: i as u64 + 1,
-                line: Some(i as u64 + 1),
-                result: Ok(change),
-            })
+            Ok(SourceRecord::new(
+                i as u64 + 1,
+                Some(i as u64 + 1),
+                Ok(change),
+            ))
         })
         .collect()
 }
@@ -331,10 +332,10 @@ fn delta_is_refused_when_it_cannot_match_a_full_generation() {
     writer.write_all(tampered.as_bytes()).unwrap();
     writer.finish().unwrap();
     handle
-        .publish(&[advanced_sitemap::Publication {
-            staged: name.clone(),
-            target: name.clone(),
-        }])
+        .publish(&[advanced_sitemap::Publication::new(
+            name.clone(),
+            name.clone(),
+        )])
         .unwrap();
     let before = store.published().unwrap();
     assert!(

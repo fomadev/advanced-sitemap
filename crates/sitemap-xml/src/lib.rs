@@ -32,6 +32,7 @@ pub const INDEX_FOOTER: &str = "</sitemapindex>\n";
 
 /// Errors raised while writing XML.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum XmlError {
     /// The underlying writer failed.
     Io(io::Error),
@@ -82,6 +83,7 @@ impl From<io::Error> for XmlError {
 
 /// Extension namespaces declared on a `<urlset>` element.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Namespaces {
     /// `xmlns:xhtml`, required by alternates.
     pub xhtml: bool,
@@ -591,14 +593,11 @@ mod tests {
     #[test]
     fn writes_index() {
         let entries = [
-            IndexEntry {
-                loc: url("https://example.com/sitemap-1.xml"),
-                lastmod: Some(W3cDateTime::parse("2026-11-20").unwrap()),
-            },
-            IndexEntry {
-                loc: url("https://example.com/sitemap-2.xml"),
-                lastmod: None,
-            },
+            IndexEntry::new(
+                url("https://example.com/sitemap-1.xml"),
+                Some(W3cDateTime::parse("2026-11-20").unwrap()),
+            ),
+            IndexEntry::new(url("https://example.com/sitemap-2.xml"), None),
         ];
         let mut out = Vec::new();
         let size = write_sitemap_index(&mut out, &entries).unwrap();

@@ -10,6 +10,7 @@ use crate::report::{ArtifactKind, ArtifactReport};
 /// are never deleted automatically.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct Manifest {
     /// Manifest format version.
     pub schema_version: String,
@@ -24,6 +25,7 @@ pub struct Manifest {
 /// One artifact in the manifest.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct ManifestArtifact {
     /// File name.
     pub name: String,

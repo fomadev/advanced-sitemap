@@ -36,13 +36,11 @@ impl Drop for TempDir {
 }
 
 fn config(state: Option<&Path>, publish: PublishPolicy) -> EngineConfig {
-    let mut config = EngineConfig {
-        strategy: PartitionStrategy::ConsistentHash {
-            partitions: NonZeroU32::new(6).unwrap(),
-        },
-        publish,
-        ..EngineConfig::default()
+    let mut config = EngineConfig::default();
+    config.strategy = PartitionStrategy::ConsistentHash {
+        partitions: NonZeroU32::new(6).unwrap(),
     };
+    config.publish = publish;
     config.layout.public_base_url =
         Some(PublicBaseUrl::new(SitemapUrl::new("https://example.com/").unwrap()).unwrap());
     config.snapshot = state.map(SnapshotSettings::new);
@@ -52,10 +50,11 @@ fn config(state: Option<&Path>, publish: PublishPolicy) -> EngineConfig {
 fn input(versions: &BTreeMap<u32, u32>) -> Vec<RawUrlRecord> {
     let mut records: Vec<RawUrlRecord> = versions
         .iter()
-        .map(|(id, v)| RawUrlRecord {
-            loc: Some(format!("https://example.com/p/{id:04}")),
-            lastmod: Some(format!("2026-01-{:02}", 1 + v % 28)),
-            ..RawUrlRecord::default()
+        .map(|(id, v)| {
+            let mut this = RawUrlRecord::default();
+            this.loc = Some(format!("https://example.com/p/{id:04}"));
+            this.lastmod = Some(format!("2026-01-{:02}", 1 + v % 28));
+            this
         })
         .collect();
     records.sort_by(|a, b| a.loc.cmp(&b.loc));
@@ -79,11 +78,11 @@ fn resolved(config: &EngineConfig, out: &Path, versions: &BTreeMap<u32, u32>) ->
         .into_iter()
         .map(|r| serde_json::json!({"loc": r.loc, "lastmod": r.lastmod}))
         .collect();
-    ResolvedConfig {
-        engine: config.clone(),
-        input: Some(InputSpec::Inline(values)),
-        output_dir: out.to_path_buf(),
-    }
+    ResolvedConfig::new(
+        config.clone(),
+        Some(InputSpec::Inline(values)),
+        out.to_path_buf(),
+    )
 }
 
 #[test]
@@ -165,11 +164,11 @@ fn feed(changes: Vec<ChangeRecord>) -> Vec<std::io::Result<SourceRecord<ChangeRe
         .into_iter()
         .enumerate()
         .map(|(i, change)| {
-            Ok(SourceRecord {
-                record: i as u64 + 1,
-                line: Some(i as u64 + 1),
-                result: Ok(change),
-            })
+            Ok(SourceRecord::new(
+                i as u64 + 1,
+                Some(i as u64 + 1),
+                Ok(change),
+            ))
         })
         .collect()
 }

@@ -104,6 +104,7 @@ const END: u16 = u16::MAX;
 
 /// One published URL.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[non_exhaustive]
 pub struct Record {
     /// Serialized URL (sort key).
     pub loc: String,
@@ -114,6 +115,16 @@ pub struct Record {
 }
 
 impl Record {
+    /// A record for `loc`, whose encoded `<url>` block has digest `content`,
+    /// published in `partition` (1-based).
+    pub fn new(loc: impl Into<String>, content: Digest, partition: u32) -> Self {
+        Record {
+            loc: loc.into(),
+            content,
+            partition,
+        }
+    }
+
     /// Approximate memory used by the record while sorting.
     fn memory(&self) -> usize {
         self.loc.len() + std::mem::size_of::<Record>()
@@ -635,6 +646,7 @@ pub fn open_file(path: &Path) -> io::Result<Option<SnapshotReader<BufReader<File
 
 /// Differences between two snapshots.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct ChangeSet {
     /// URLs only in the new snapshot.
     pub added: u64,

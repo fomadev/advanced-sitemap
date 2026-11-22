@@ -1,7 +1,7 @@
 # CLI: `advanced-sitemap`
 
 ```
-advanced-sitemap [--format human|json] <generate|validate|explain> [options]
+advanced-sitemap [--format human|json] <command> [options]
 ```
 
 | Command | Effect |
@@ -12,6 +12,7 @@ advanced-sitemap [--format human|json] <generate|validate|explain> [options]
 | `inspect` | Reads existing sitemap or sitemap index files (plain or gzip) and checks them; writes no file |
 | `diff` | Compares two sets of published sitemaps (files or directories); writes no file |
 | `apply` | Applies a change feed to the published sitemaps, rewriting only the partitions it touches (delta mode) |
+| `doctor` | Checks the output and state directories against the configuration; writes no file |
 
 ## Input
 
@@ -27,9 +28,34 @@ Relative paths in a configuration file are resolved against the directory
 of that file. Relative paths on the command line are resolved against the
 current directory.
 
+## Configuration rules
+
+1. **Sources, lowest to highest priority:** built-in defaults, then the
+   configuration document (`--config`), then command-line options. There is
+   no environment variable and no implicit configuration file.
+2. **One validation for every source.** Command-line options are written
+   into the document first; the result is then checked as a whole. An
+   option is therefore held to the same rules as the field it replaces, and
+   a conflict between an option and a field of the document is reported
+   like a conflict inside the document. For example, `--strategy
+   sequential` with a document that sets `partitioning.partitions` is an
+   error: remove the field, there is no option that clears it.
+3. **Strict documents.** Unknown fields, at any level, are errors, so a
+   misspelled field is never ignored. `schemaVersion` is required; a version
+   newer than the engine supports is refused rather than half understood.
+4. **Nothing implicit.** The engine never reads the clock (time-dependent
+   rules need `referenceTime`), never infers the site from the input, and
+   never deletes a file it no longer produces (it reports
+   `STALE_ARTIFACT`).
+5. **Errors stop before any write.** A configuration error exits with code
+   2 before the input is read or a lock is taken.
+6. **Mutually exclusive inputs.** `urls` and `source` cannot both be set in
+   a document; `--input` replaces either.
+
 ## Options
 
-Command-line options override the configuration document.
+Command-line options override the configuration document (see the rules
+above).
 
 | Option | Document field |
 |---|---|
@@ -54,7 +80,8 @@ Command-line options override the configuration document.
 | `--execution-mode full\|skip-unchanged\|auto` (`generate`, `explain`) | `output.publish = "all"`, `"changed"` or `"auto"` |
 | `--expect-state TOKEN` (`generate`, `apply`) | Refuse to run if the published state is not the one `explain` planned for |
 | `--out DIR` (`explain`) | Output directory whose published state is planned for; use the same as for `generate` or `apply` |
-| `--deny-warnings` (`generate`, `validate`, `inspect`) | exit 1 if any warning or error is reported |
+| `--out DIR` (`doctor`) | Output directory to check |
+| `--deny-warnings` (`generate`, `validate`, `apply`, `inspect`, `doctor`) | exit 1 if any warning or error is reported |
 | `--sample N` (`explain` only) | number of records sampled, default 1000 |
 
 ## `inspect`
@@ -237,6 +264,32 @@ process exits, even after a crash.
 - `inspect` and `diff` do not take the lock: reading a directory during a
   publication can see a mix of old and new files, each of them complete.
 
+## `doctor`
+
+```
+advanced-sitemap doctor --config advanced-sitemap.json [--out DIR] [--state-dir DIR]
+```
+
+Reads the output directory and the state directory, and writes nothing (it
+does not even create a missing directory). The checks, in this order:
+
+| Check | Looks at | Status |
+|---|---|---|
+| `output-directory` | The directory exists and is writable, or will be created | `error` if it is a file or read-only |
+| `lock` | Whether a run holds `.advanced-sitemap.lock` or `<state>/<stem>.lock` | `warning`: a run started now would stop with `busy` |
+| `staging` | `.advanced-sitemap-staging-*` left by an interrupted run | `warning`: the next run removes them |
+| `manifest` | `<stem>.manifest.json` can be read | `error` if it is damaged; `skipped` without a manifest |
+| `files` | Every file of the manifest exists with its size and BLAKE3 digest | `error` if one was changed or removed outside the engine; `warning` for a manifest without digests (size only) |
+| `snapshot` | The snapshot matches the settings and the published manifest | `warning` if absent, unreadable, written with other settings, or stale (`SNAPSHOT_STALE`); `apply` is refused until the next `generate` |
+
+The report also gives the state token a run would start from (the
+`stateToken` of `explain`). With `--format json`:
+`{"schemaVersion":"1.0","command":"doctor","status":"ok|warning|error","checks":[{"name","status","message","suggestion"}],"stateToken":"..."}`.
+
+Exit code 0 when no check is an `error`, 1 otherwise (or on a warning with
+`--deny-warnings`). Every published file is read once to check its digest:
+on a large site the cost is about that of reading the sitemaps from disk.
+
 ## Exit codes (stable contract)
 
 | Code | Meaning |
@@ -254,7 +307,10 @@ process exits, even after a crash.
 - `--format json`: the [report document](../protocol/README.md#report) for
   `generate` and `validate`, the plan for `explain`. Errors that stop the run
   are printed to stdout as
-  `{"schemaVersion":"1.0","status":"error","error":{"kind":"config|io|internal","message":"..."}}`.
+  `{"schemaVersion":"1.0","status":"error","error":{"kind":"...","message":"..."}}`,
+  where `kind` is one of `config`, `io`, `internal`, `delta-refused`, `busy`
+  or `state-changed` (`EngineError::kind` in the Rust API). A new kind may
+  be added; an existing one keeps its meaning and exit code.
 
 ## Output files
 
@@ -273,5 +329,6 @@ is removed when the run ends.
 
 ## Not yet implemented
 
-`inspect`, `diff`, `doctor` and `benchmark` are planned. They are not
-present in the binary.
+A `benchmark` command is planned. It is not present in the binary; the
+measurements in [docs/performance](../performance/README.md) use the
+Criterion benchmarks (`cargo bench`) and the `make_dataset` example.

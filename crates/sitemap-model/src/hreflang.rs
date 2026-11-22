@@ -16,6 +16,7 @@ pub struct LanguageTag(String);
 
 /// Why a string is not a valid [`LanguageTag`].
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct LanguageTagError;
 
 impl fmt::Display for LanguageTagError {

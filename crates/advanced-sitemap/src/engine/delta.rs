@@ -230,14 +230,11 @@ impl Engine {
             if touched.contains(&partition) {
                 continue;
             }
-            reused.push(PartitionSummary {
-                digest: artifact.digest.as_deref().and_then(parse_digest),
-                id: partition,
-                lastmod: lastmods.get(name.as_str()).cloned().flatten(),
-                staged_name: name,
-                urls,
-                bytes: artifact.bytes,
-            });
+            let lastmod = lastmods.get(name.as_str()).cloned().flatten();
+            let mut summary = PartitionSummary::new(partition, name, urls, artifact.bytes);
+            summary.lastmod = lastmod;
+            summary.digest = artifact.digest.as_deref().and_then(parse_digest);
+            reused.push(summary);
         }
         Ok(DeltaPreparation {
             previous,
@@ -338,17 +335,27 @@ impl Engine {
             let location = Location::record(item.record, item.line);
             let (raw, delete) = match item.result {
                 Ok(ChangeRecord::Upsert { url }) => (url, false),
-                Ok(ChangeRecord::Delete { loc }) => (
-                    RawUrlRecord {
-                        loc: Some(loc),
-                        ..RawUrlRecord::default()
-                    },
-                    true,
-                ),
+                Ok(ChangeRecord::Delete { loc }) => {
+                    let mut raw = RawUrlRecord::default();
+                    raw.loc = Some(loc);
+                    (raw, true)
+                }
+                Ok(other) => {
+                    collector.push(Diagnostic::new(
+                        DiagnosticCode::InputParseError,
+                        format!(
+                            "change operation {other:?} is not supported by this engine version"
+                        ),
+                        location,
+                    ));
+                    stats.invalid_records += 1;
+                    continue;
+                }
                 Err(error) => {
                     let code = match error {
                         DecodeError::Json(_) => DiagnosticCode::InputParseError,
                         DecodeError::LineTooLong { .. } => DiagnosticCode::InputLineTooLong,
+                        _ => DiagnosticCode::InputParseError,
                     };
                     collector.push(
                         Diagnostic::new(code, error.to_string(), location).with_suggestion(
@@ -524,11 +531,11 @@ impl Engine {
                 match partitioner.push(&entry) {
                     Ok(placed) => {
                         stats.urls_written += 1;
-                        builder.push(SnapshotRecord {
+                        builder.push(SnapshotRecord::new(
                             loc,
-                            content: digest128(partitioner.last_block()),
-                            partition: placed,
-                        })?;
+                            digest128(partitioner.last_block()),
+                            placed,
+                        ))?;
                     }
                     Err(
                         error @ (PushError::PartitionFull { .. } | PushError::NewsLimit { .. }),
@@ -559,6 +566,7 @@ impl Engine {
                     }
                     Err(PushError::Io(error)) => return Err(EngineError::Io(error)),
                     Err(PushError::Xml(error)) => return Err(EngineError::Xml(error)),
+                    Err(other) => return Err(EngineError::Io(io::Error::other(other.to_string()))),
                 }
             }
             // Each partition is complete: release its buffers now.
