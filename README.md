@@ -26,6 +26,9 @@ Next.js, Nuxt, Laravel, Django and others.
   where a URL keeps its file across runs; and `consistent-hash`, which also
   keeps most URLs in place when the partition count grows (`explain` gives
   the exact count of URLs that would move).
+- Delta mode: `apply` takes a feed of upserts and deletes and rewrites only
+  the partitions it touches, with the same bytes as a full generation from
+  the URLs sorted by `loc`.
 - Automatic sitemap index, with each child's `lastmod` set to the latest
   `lastmod` of its entries.
 - Staged publication (child sitemaps, then index, then manifest). Nothing is
