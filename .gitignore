@@ -2,3 +2,4 @@
 *.profraw
 /bench-output
 .advanced-sitemap-staging-*
+/tools/alloc-profile/target
