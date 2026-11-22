@@ -257,8 +257,12 @@ fn delta_rewrites_only_the_touched_partitions() {
         .unwrap();
     assert_eq!(
         rewritten,
-        // The manifest is identical: same URL count and same size.
-        [format!("sitemap-{partition}.xml").as_str(), "sitemap.xml"],
+        // The manifest changes too: it holds each file's digest.
+        [
+            format!("sitemap-{partition}.xml").as_str(),
+            "sitemap.xml",
+            "sitemap.manifest.json"
+        ],
         "{:?}",
         report.artifacts
     );

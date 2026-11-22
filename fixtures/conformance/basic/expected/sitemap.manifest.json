@@ -7,7 +7,8 @@
       "name": "sitemap.xml",
       "kind": "sitemap",
       "entries": 3,
-      "bytes": 578
+      "bytes": 578,
+      "digest": "83f1d8be62e8e8d6f9a1d5676dc67fed"
     }
   ]
 }
