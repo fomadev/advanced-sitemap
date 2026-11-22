@@ -134,6 +134,34 @@ its URLs to the new one. The gain is in URL placement (most URLs stay in
 the same file for crawlers, and the change report stays small), not in
 fewer files written on that run.
 
+## Delta mode (`apply`)
+
+1 M URL dataset sorted by URL, `consistent-hash`. Feeds of random URLs, 80 %
+upserts and 20 % deletes, applied one after the other:
+
+| | 24 partitions (50,000 URLs max) | 1,000 partitions (2,000 URLs max) |
+|---|---|---|
+| Full `generate` | 16.5 to 16.8 s, 117 MiB | 37.5 to 41.3 s, 287 MiB |
+| `apply`, 1 operation | 4.9 to 6.5 s, 95 MiB | 4.6 to 5.4 s, 94 MiB |
+| `apply`, 100 operations | 24.8 s, 126 MiB (all 24 partitions touched) | 9.2 to 11.1 s, 95 MiB |
+| `apply`, 10,000 operations | 20.5 s, 133 MiB | 49.6 to 54.2 s, 117 MiB |
+
+- **When it pays:** few partitions touched. Each touched partition is read
+  back, checked and rewritten, which costs more per URL than generating it
+  from JSON Lines; a feed that touches every partition is slower than a
+  full `generate` (use `generate --skip-unchanged` then). Many small
+  partitions make feeds touch a smaller share of the site.
+- **Fixed cost:** about 4.5 s at 1 M URLs, almost all snapshot I/O (two
+  reads of the old snapshot, the new one sorted, synced and compared), as
+  for `--state-dir` (see above). Not optimized yet.
+- **Checked at this scale:** after the three feeds (997,988 URLs left), the
+  26 published files were byte for byte those of a full `generate` from
+  the same final URLs.
+- Memory: checking a touched partition uses one digest per partition, and
+  each partition is closed once rewritten. Before these two changes, the
+  100- and 10,000-operation runs peaked at 293 to 300 MiB (24 partitions)
+  and 273 MiB (1,000 partitions).
+
 ## hreflang reciprocity
 
 `validate` on the 1 M URL dataset (100,000 entries with 2 alternates, so
