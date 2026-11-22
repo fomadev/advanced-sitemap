@@ -32,6 +32,8 @@ def run(args):
 
 
 def main():
+    # Same output bytes on every platform (no CRLF on Windows).
+    sys.stdout.reconfigure(newline="\n")
     binary, dataset, work = sys.argv[1], sys.argv[2], Path(sys.argv[3])
     shutil.rmtree(work, ignore_errors=True)
     out, state = work / "out", work / "state"
