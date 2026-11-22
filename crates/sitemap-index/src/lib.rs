@@ -402,18 +402,35 @@ impl<'s> Partitioner<'s> {
     /// Closes every open partition and returns all partitions by id. When no
     /// entry was pushed, a single empty partition is produced so that the
     /// output always contains a valid document.
-    pub fn finish(mut self) -> Result<Vec<PartitionSummary>, PushError> {
+    pub fn finish(self) -> Result<Vec<PartitionSummary>, PushError> {
+        self.close_all(true)
+    }
+
+    /// Like [`finish`], but returns no partition when nothing was pushed
+    /// (used by the delta mode, which writes only the touched partitions).
+    ///
+    /// [`finish`]: Partitioner::finish
+    pub fn finish_partial(self) -> Result<Vec<PartitionSummary>, PushError> {
+        self.close_all(false)
+    }
+
+    fn close_all(mut self, empty_fallback: bool) -> Result<Vec<PartitionSummary>, PushError> {
         for slot in &mut self.slots {
             if let Some(open) = slot.take() {
                 self.closed.push(open.close()?);
             }
         }
-        if self.closed.is_empty() {
+        if self.closed.is_empty() && empty_fallback {
             let empty = self.open(1)?;
             self.closed.push(empty.close()?);
         }
         self.closed.sort_by_key(|p| p.id);
         Ok(self.closed)
+    }
+
+    /// The store, for reading published artifacts between pushes.
+    pub fn store(&self) -> &dyn ArtifactStore {
+        &*self.store
     }
 }
 
