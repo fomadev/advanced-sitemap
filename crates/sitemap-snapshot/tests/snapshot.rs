@@ -189,3 +189,51 @@ fn sequence_digest_depends_on_every_record_and_its_framing() {
     );
     assert_eq!(SequenceDigest::default().records(), 0);
 }
+
+#[test]
+fn merging_a_sorted_stream_gives_the_same_bytes_as_building_everything() {
+    let dir = temp("merged");
+    let all: Vec<Record> = (0..2_000)
+        .map(|i| {
+            record(
+                &format!("https://example.com/{:05}", (i * 7_919) % 2_000),
+                (i % 5) as u8,
+                i % 9 + 1,
+            )
+        })
+        .collect();
+    let (expected, _) = build(&all, 1 << 30, &dir);
+    // Odd partitions come from the builder, even ones from a sorted stream.
+    let mut sorted: Vec<Record> = all
+        .iter()
+        .filter(|r| r.partition % 2 == 0)
+        .cloned()
+        .collect();
+    sorted.sort();
+    for budget in [1 << 30, 4_096] {
+        let mut builder = SnapshotBuilder::new(&dir, budget);
+        for r in all.iter().filter(|r| r.partition % 2 == 1) {
+            builder.push(r.clone()).unwrap();
+        }
+        assert_eq!(budget == 4_096, builder.spilled_runs() > 0);
+        let mut out = Vec::new();
+        let count = builder
+            .finish_merged(
+                &digest128(b"config"),
+                sorted.iter().cloned().map(Ok),
+                &mut out,
+            )
+            .unwrap();
+        assert_eq!(count, 2_000);
+        assert_eq!(out, expected, "budget {budget}");
+    }
+    // An error of the sorted stream is returned.
+    let builder = SnapshotBuilder::new(&dir, 1 << 20);
+    let failing = vec![Err(io::Error::other("boom"))];
+    assert!(
+        builder
+            .finish_merged(&[0; 16], failing, Vec::new())
+            .is_err()
+    );
+    let _ = fs::remove_dir_all(&dir);
+}

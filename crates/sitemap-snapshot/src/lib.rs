@@ -337,40 +337,71 @@ impl SnapshotBuilder {
     }
 
     /// Writes the sorted snapshot to `out` and returns the record count.
-    pub fn finish(mut self, config: &Digest, out: impl Write) -> io::Result<u64> {
+    pub fn finish(self, config: &Digest, out: impl Write) -> io::Result<u64> {
+        self.finish_merged(config, std::iter::empty(), out)
+    }
+
+    /// Like [`finish`], merging in `sorted`, a stream of records already in
+    /// order (for example the unchanged part of a previous snapshot), so
+    /// that they need not be sorted or spilled again. The records of
+    /// `sorted` and of the builder must not share a `loc`.
+    ///
+    /// [`finish`]: SnapshotBuilder::finish
+    pub fn finish_merged(
+        mut self,
+        config: &Digest,
+        sorted: impl IntoIterator<Item = io::Result<Record>>,
+        out: impl Write,
+    ) -> io::Result<u64> {
         let mut writer = SnapshotWriter::new(out, config)?;
+        let mut sources: Vec<Source<'_>> = Vec::with_capacity(self.runs.len() + 2);
         if self.runs.is_empty() {
             self.buffer.sort_unstable();
-            for record in std::mem::take(&mut self.buffer) {
-                writer.push(record)?;
-            }
+            sources.push(Source::Memory(std::mem::take(&mut self.buffer).into_iter()));
         } else {
             self.spill()?;
-            let mut readers = Vec::with_capacity(self.runs.len());
             for path in &self.runs {
-                readers.push((
+                sources.push(Source::Run(
                     BufReader::with_capacity(64 * 1024, File::open(path)?),
                     Codec::default(),
                 ));
             }
-            // k-way merge; ties are broken by run index, but equal records
-            // are identical, so the output does not depend on it.
-            let mut heap = BinaryHeap::with_capacity(readers.len());
-            for (i, (reader, codec)) in readers.iter_mut().enumerate() {
-                if let Some(record) = codec.read(reader)? {
-                    heap.push(Reverse((record, i)));
-                }
+        }
+        sources.push(Source::Sorted(Box::new(sorted.into_iter())));
+
+        // k-way merge; ties are broken by source index, but equal records
+        // are identical, so the output does not depend on it.
+        let mut heap = BinaryHeap::with_capacity(sources.len());
+        for (i, source) in sources.iter_mut().enumerate() {
+            if let Some(record) = source.next()? {
+                heap.push(Reverse((record, i)));
             }
-            while let Some(Reverse((record, i))) = heap.pop() {
-                writer.push(record)?;
-                let (reader, codec) = &mut readers[i];
-                if let Some(next) = codec.read(reader)? {
-                    heap.push(Reverse((next, i)));
-                }
+        }
+        while let Some(Reverse((record, i))) = heap.pop() {
+            writer.push(record)?;
+            if let Some(next) = sources[i].next()? {
+                heap.push(Reverse((next, i)));
             }
         }
         let (_, count) = writer.finish()?;
         Ok(count)
+    }
+}
+
+/// One input of the final merge.
+enum Source<'a> {
+    Memory(std::vec::IntoIter<Record>),
+    Run(BufReader<File>, Codec),
+    Sorted(Box<dyn Iterator<Item = io::Result<Record>> + 'a>),
+}
+
+impl Source<'_> {
+    fn next(&mut self) -> io::Result<Option<Record>> {
+        match self {
+            Source::Memory(records) => Ok(records.next()),
+            Source::Run(reader, codec) => codec.read(reader),
+            Source::Sorted(records) => records.next().transpose(),
+        }
     }
 }
 
