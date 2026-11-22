@@ -1,6 +1,6 @@
 # ADR-0013 — Les fichiers publiés comme état du mode `delta`
 
-- Statut : proposé (phase D, après A à C)
+- Statut : accepté (2026-11-22)
 - Date : 2026-11-21
 
 ## Contexte
@@ -68,3 +68,16 @@ générés. Il devra être étendu à des entrées aléatoires avant la phase D.
   peu de partitions sont touchées. Le planner ne choisit pas encore
   automatiquement entre `delta` et `skip-unchanged` : c'est la commande
   qui décide.
+
+## Acceptation (2026-11-22)
+
+Accepté par le mainteneur le 2026-11-22, après une revue qui a vérifié la
+décision contre le code et les tests (R18 du registre des risques). Depuis la dernière mise à jour :
+
+- `explain --changes` (lot B) compare `apply` (`delta`) et une
+  régénération pour un flux donné, avec les préconditions de chacun. Il
+  n'y a toujours pas de bascule automatique de l'un vers l'autre : un flux
+  refusé n'est jamais ignoré en silence, c'est voulu ;
+- le flux tenu en mémoire est borné (`state.maxFeedOperations`, lot C) ;
+- `doctor` (lot E) vérifie hors exécution que les fichiers publiés
+  correspondent au manifeste et au snapshot, condition d'un `apply`.

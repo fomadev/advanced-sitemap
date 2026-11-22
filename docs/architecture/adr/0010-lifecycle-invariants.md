@@ -1,6 +1,6 @@
 # ADR-0010 — Invariants du Lifecycle Engine et découpage en phases
 
-- Statut : proposé (à valider avant toute implémentation)
+- Statut : accepté (2026-11-22)
 - Date : 2026-11-21
 
 ## Contexte
@@ -45,3 +45,14 @@ lui-même. Avantages : aucun nouveau format, aucune décision de hachage
 nécessaire (l'ADR-0011 reste en suspens pour la phase B), et un fichier
 modifié hors du moteur est détecté et republié. Mesures dans
 `docs/performance/README.md`.
+
+## Acceptation (2026-11-22)
+
+Accepté par le mainteneur le 2026-11-22, après une revue qui a vérifié la
+décision contre le code et les tests (R18 du registre des risques). Les quatre phases A à D sont implémentées ; les invariants sont vérifiés
+par l'oracle I1 (deux stratégies par hachage, et à 1 M d'URL), l'injection
+de pannes et les arrêts brutaux du processus. Le point 3 est tenu ainsi :
+`explain` et `generate` décident du mode d'exécution à partir du même
+constat (une publication existe-t-elle ?), et un test vérifie qu'ils
+choisissent le même mode. Aucun comportement par défaut n'a changé
+(`output.publish` vaut toujours `all`).

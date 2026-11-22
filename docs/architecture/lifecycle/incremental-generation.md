@@ -50,7 +50,7 @@ constant. Mais changer N déplace presque tout. Mesuré sur 200 000 URL :
 | 20 → 21 | 95,3 % | 4,76 % | 4,76 % |
 | 100 → 101 | 99,0 % | 0,99 % | 0,99 % |
 
-### 4.2 `consistent-hash` (proposé, ADR-0012)
+### 4.2 `consistent-hash` (ADR-0012, accepté)
 
 `partition = jump(fnv1a64(loc), N)`, l'algorithme « jump consistent hash »
 (Lamping et Veach, 2014) : 10 lignes, sans table, sans dépendance. Quand N

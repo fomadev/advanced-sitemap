@@ -1,6 +1,6 @@
 # ADR-0011 — Empreintes persistées stables
 
-- Statut : proposé ; conditions de l'adoption vérifiées le 2026-11-22 (ci-dessous)
+- Statut : accepté (2026-11-22)
 - Date : 2026-11-21
 
 ## Contexte
@@ -77,3 +77,14 @@ Les deux conditions sont remplies ; la décision finale reste au mainteneur.
   BLAKE3 tronqué à 128 bits) ; le manifest liste ces empreintes. Coût non
   mesurable sur une relance de 1 M d'URL (médiane identique avant et
   après).
+
+## Acceptation (2026-11-22)
+
+Accepté par le mainteneur le 2026-11-22, après une revue qui a vérifié la
+décision contre le code et les tests (R18 du registre des risques). Le format du snapshot v2 et les
+empreintes du manifeste deviennent un contrat : les changer est un
+changement incompatible ([semver-policy.md](../../production/semver-policy.md),
+section 6). Les vecteurs figés passent désormais sur cinq plateformes
+(Linux et Windows en x86_64 et ARM64, macOS ARM64), et le job CI
+`determinism` vérifie que les fichiers publiés et le snapshot ont les mêmes
+octets sur les cinq.
