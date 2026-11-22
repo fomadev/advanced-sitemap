@@ -89,6 +89,7 @@ For large or streamed inputs, use `Engine` (see
 | CLI and exit codes | [docs/cli](docs/cli/README.md) |
 | JSON protocol | [docs/protocol](docs/protocol/README.md), [schemas/](schemas) |
 | Diagnostic codes | [docs/concepts/diagnostics.md](docs/concepts/diagnostics.md) |
+| Resource limits | [docs/concepts/limits.md](docs/concepts/limits.md) |
 | Architecture and ADRs | [docs/architecture](docs/architecture/overview.md) |
 | Performance | [docs/performance](docs/performance/README.md) |
 | Security model | [docs/security](docs/security/README.md) |
