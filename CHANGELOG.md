@@ -6,7 +6,23 @@ contain breaking changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- Concurrent runs on the same output or state directory are refused
+  (`EngineError::Busy`, CLI exit code 3, kind `busy`): they could
+  interleave publications, and two `apply` runs could lose one feed's
+  changes. The lock is an operating system lock, released on exit.
+- Staging directories left by a killed run are removed by the next run.
+- On Unix, the output and state directories are synced after renames.
+- The declared minimum Rust version (1.85) was wrong: it is now 1.89 and
+  checked in CI.
+
 ### Changed
+
+- Every crate forbids unsafe code. Production readiness audit in
+  `docs/production/`.
+- `ArtifactStore` gains `lock()` (default: no-op); `sitemap-storage` gains
+  `DirectoryLock`, `LOCK_FILE` and `sync_dir`; `EngineError` gains `Busy`.
 
 - Snapshot I/O is hashed and copied in 64 KiB blocks (same format): the
   `--state-dir` overhead at 1 M URLs fell from 4 to 5.5 s to 3.0 to 3.4 s,
