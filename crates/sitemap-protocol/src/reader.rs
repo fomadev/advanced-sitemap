@@ -1,5 +1,8 @@
 use std::fmt;
 use std::io::{self, BufRead, Read};
+use std::marker::PhantomData;
+
+use serde::de::DeserializeOwned;
 
 use sitemap_model::RawUrlRecord;
 
@@ -33,42 +36,52 @@ impl fmt::Display for DecodeError {
     }
 }
 
-/// One item read from a source.
+/// One item read from a source. `T` is [`RawUrlRecord`] for URL sources and
+/// [`crate::ChangeRecord`] for change feeds.
 #[derive(Clone, Debug, PartialEq)]
-pub struct SourceRecord {
+pub struct SourceRecord<T = RawUrlRecord> {
     /// 1-based record number.
     pub record: u64,
     /// 1-based line number, for line-oriented sources.
     pub line: Option<u64>,
     /// The decoded record, or why it could not be decoded.
-    pub result: Result<RawUrlRecord, DecodeError>,
+    pub result: Result<T, DecodeError>,
 }
 
 /// Streams records from JSON Lines: one JSON object per line. Blank lines are
 /// ignored, a UTF-8 byte order mark and `\r\n` line endings are accepted.
 /// Memory use is bounded by the maximum line length.
-pub struct JsonlReader<R> {
+pub struct JsonlReader<R, T = RawUrlRecord> {
     reader: R,
     max_line_bytes: usize,
     line: u64,
     record: u64,
     buffer: Vec<u8>,
+    item: PhantomData<fn() -> T>,
 }
 
 impl<R: BufRead> JsonlReader<R> {
-    /// A reader with the default line limit.
+    /// A URL record reader with the default line limit.
     pub fn new(reader: R) -> Self {
         Self::with_max_line_bytes(reader, DEFAULT_MAX_LINE_BYTES)
     }
 
-    /// A reader with a custom line limit.
+    /// A URL record reader with a custom line limit.
     pub fn with_max_line_bytes(reader: R, max_line_bytes: usize) -> Self {
+        Self::typed(reader, max_line_bytes)
+    }
+}
+
+impl<R: BufRead, T> JsonlReader<R, T> {
+    /// A reader decoding each line as `T`.
+    pub fn typed(reader: R, max_line_bytes: usize) -> Self {
         Self {
             reader,
             max_line_bytes,
             line: 0,
             record: 0,
             buffer: Vec::with_capacity(4096),
+            item: PhantomData,
         }
     }
 
@@ -108,8 +121,8 @@ impl<R: BufRead> JsonlReader<R> {
     }
 }
 
-impl<R: BufRead> Iterator for JsonlReader<R> {
-    type Item = io::Result<SourceRecord>;
+impl<R: BufRead, T: DeserializeOwned> Iterator for JsonlReader<R, T> {
+    type Item = io::Result<SourceRecord<T>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -141,7 +154,7 @@ impl<R: BufRead> Iterator for JsonlReader<R> {
             }
 
             self.record += 1;
-            let result = serde_json::from_slice::<RawUrlRecord>(bytes)
+            let result = serde_json::from_slice::<T>(bytes)
                 .map_err(|error| DecodeError::Json(error.to_string()));
             return Some(Ok(SourceRecord {
                 record: self.record,
