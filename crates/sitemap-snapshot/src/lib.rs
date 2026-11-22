@@ -46,6 +46,41 @@ pub fn digest128(bytes: &[u8]) -> Digest {
     out
 }
 
+/// Digest of a sequence of `(loc, content)` records, fed in `loc` order.
+///
+/// Used by the delta mode to check a published partition against the
+/// snapshot with constant memory: both sides are visited in `loc` order.
+/// Each record is framed by the length of its `loc`, so different
+/// sequences cannot produce the same input.
+#[derive(Clone, Debug, Default)]
+pub struct SequenceDigest {
+    hasher: blake3::Hasher,
+    records: u64,
+}
+
+impl SequenceDigest {
+    /// Adds one record.
+    pub fn update(&mut self, loc: &str, content: &Digest) {
+        self.hasher.update(&(loc.len() as u64).to_le_bytes());
+        self.hasher.update(loc.as_bytes());
+        self.hasher.update(content);
+        self.records += 1;
+    }
+
+    /// Records added so far.
+    pub fn records(&self) -> u64 {
+        self.records
+    }
+
+    /// The digest of the records added so far.
+    pub fn finish(&self) -> Digest {
+        let hash = self.hasher.finalize();
+        let mut out = [0u8; 16];
+        out.copy_from_slice(&hash.as_bytes()[..16]);
+        out
+    }
+}
+
 /// Lowercase hexadecimal form of a digest.
 pub fn to_hex(digest: &Digest) -> String {
     digest.iter().map(|b| format!("{b:02x}")).collect()
