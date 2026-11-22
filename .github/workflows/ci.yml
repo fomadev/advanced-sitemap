@@ -20,6 +20,11 @@ jobs:
         run: rustup toolchain install
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: Third-party notices (every run-time dependency ships a license file)
+        run: |
+          for target in x86_64-unknown-linux-gnu x86_64-pc-windows-msvc aarch64-apple-darwin; do
+            python3 tools/notices.py --target "$target" --out "notices/$target.txt"
+          done
 
   test:
     # x86_64 and ARM64 on Linux, Windows and macOS (macos-latest is ARM64).

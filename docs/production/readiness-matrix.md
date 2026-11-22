@@ -28,4 +28,4 @@ première (voir `semver-policy.md`).
 | CLI (`sitemap-cli`) | READY | 15 tests de bout en bout ; JSON et humain ; codes 0 à 4 et `error.kind` documentés ; `doctor` (contrôle en lecture seule) | — |
 | API Rust publique | NEEDS HARDENING | Types publics `#[non_exhaustive]` (clippy l'impose), constructeurs, `EngineError::kind`/`source`/`is_retryable`, `Engine::doctor` ; politique SemVer ; codes de diagnostic figés par test | Comparaison d'API automatique après la première version (F) ; ADR à approuver (R18) |
 | Bindings (Node, Python, PHP) | BLOCKED | Non commencés, hors périmètre de la version stable du cœur | Stabilisation du protocole et de l'API |
-| Distribution (crates.io, binaires) | BLOCKED | Version candidate construite par la CI pour 7 cibles, vérifiée contre les fixtures, `SHA256SUMS` ; `publish = false` partout | ADR (R18), notices des dépendances (R27), décision de publication |
+| Distribution (crates.io, binaires) | BLOCKED | Version candidate construite par la CI pour 7 cibles, vérifiée contre les fixtures, notices des dépendances, `SHA256SUMS` ; `publish = false` partout | ADR (R18), décision de publication |

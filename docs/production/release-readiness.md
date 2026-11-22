@@ -8,9 +8,9 @@ décider. Aucune version n'est publiée.
 
 **Techniquement prêt pour une version candidate 0.1.0, non publiable en
 l'état.** Le code, les tests, la CI et les artefacts sont prêts ; la
-licence est décidée (R19). Restent l'approbation des ADR, les notices des
-dépendances dans les archives (R27) et votre autorisation de publier
-(section 3).
+licence est décidée (R19) et les notices des dépendances sont jointes aux
+archives (R27). Restent l'approbation des ADR et votre autorisation de
+publier (section 3).
 
 ## 2. Conditions de sortie
 
@@ -28,7 +28,7 @@ dépendances dans les archives (R27) et votre autorisation de publier
 | Aucun secret dans les artefacts | Oui | [security-report.md](security-report.md), section 7 |
 | Aucun défaut connu de corruption | Oui | Aucun fichier publié tronqué dans aucun test ; l'ensemble mixte (R2) est documenté, détecté par `doctor` et réparé à l'exécution suivante |
 | Licence finalisée | Oui | R19 décidé : FPL v1.0, titulaire Fordima Inc. |
-| Notices des dépendances dans les binaires | **Non** | R27 : à générer et joindre aux archives |
+| Notices des dépendances dans les binaires | Oui | R27 : `THIRD-PARTY-NOTICES.txt` dans chaque archive, vérifié à chaque PR |
 | Formats approuvés | **Non** | R18 : ADR-0010 à 0013 |
 
 ## 3. Décisions qui bloquent une distribution
@@ -36,7 +36,6 @@ dépendances dans les archives (R27) et votre autorisation de publier
 | Décision | Pourquoi elle bloque |
 |---|---|
 | Approbation des ADR-0010 à 0013 (R18) | Le format du snapshot v2 et le mode delta en dépendent ; les changer après publication serait incompatible |
-| Notices des dépendances (R27) | Les licences MIT et Apache-2.0 des dépendances exigent leurs notices dans les binaires distribués |
 | Autorisation de publier, et où (GitHub Releases, crates.io) | Rien n'est publié sans votre accord explicite ; pour crates.io il faut aussi des métadonnées et des noms de crates disponibles |
 
 Décisions utiles mais non bloquantes pour une 0.1 : publication atomique
@@ -55,7 +54,9 @@ se lance à la main (`workflow_dispatch`) et sur une PR qui le modifie. Il :
    x86_64 est compilé de façon croisée) : `--version`, puis `generate` sur
    les 6 fixtures de conformité, comparées octet par octet ;
 3. produit des archives `advanced-sitemap-<version>-<commit>-<cible>`
-   (`.tar.gz`, `.zip` pour Windows) et `SHA256SUMS` ;
+   (`.tar.gz`, `.zip` pour Windows) avec le binaire, `LICENSE`,
+   `THIRD-PARTY-NOTICES.txt`, le README, le CHANGELOG et `BUILDINFO.txt`,
+   et `SHA256SUMS` ;
 4. les garde 14 jours comme artefacts du workflow. Il ne crée ni tag, ni
    release, ni paquet.
 
@@ -65,7 +66,7 @@ publication. Le commit figure dans le nom de l'archive et dans
 
 ## 5. Publier, une fois autorisé (non fait)
 
-1. Trancher R18 ; joindre les notices des dépendances aux archives (R27).
+1. Trancher R18.
 2. Fixer la version (`0.1.0` ou `0.1.0-rc.1`), compléter le CHANGELOG.
 3. Lancer `Release candidate` sur le commit, vérifier `SHA256SUMS`.
 4. Créer le tag et la release GitHub avec ces archives.
