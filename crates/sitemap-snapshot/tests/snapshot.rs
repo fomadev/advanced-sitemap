@@ -237,3 +237,48 @@ fn merging_a_sorted_stream_gives_the_same_bytes_as_building_everything() {
     );
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn version_1_snapshots_are_still_read() {
+    // Written by the version-1 writer (frozen file).
+    let bytes = include_bytes!("fixtures/v1.snapshot");
+    let reader = SnapshotReader::new(&bytes[..]).unwrap();
+    assert_eq!(reader.config(), &digest128(b"config"));
+    assert_eq!(reader.publication(), None);
+    let records: Vec<Record> = reader.collect::<io::Result<_>>().unwrap();
+    let locs: Vec<&str> = records.iter().map(|r| r.loc.as_str()).collect();
+    assert_eq!(
+        locs,
+        [
+            "https://example.com/a",
+            "https://example.com/b",
+            "https://example.com/b/c"
+        ]
+    );
+    assert_eq!(records[1].partition, 2);
+}
+
+#[test]
+fn version_2_records_the_publication_digest() {
+    let dir = temp("publication");
+    let mut builder = SnapshotBuilder::new(&dir, 1 << 20).with_publication(digest128(b"manifest"));
+    builder.push(record("https://example.com/a", 1, 1)).unwrap();
+    let mut out = Vec::new();
+    builder.finish(&digest128(b"config"), &mut out).unwrap();
+    assert_eq!(&out[..8], b"ASNAPv2\n");
+    let reader = SnapshotReader::new(&out[..]).unwrap();
+    assert_eq!(reader.publication(), Some(&digest128(b"manifest")));
+    assert_eq!(reader.map(Result::unwrap).count(), 1);
+
+    // Without a publication digest, none is reported.
+    let mut out = Vec::new();
+    SnapshotBuilder::new(&dir, 1 << 20)
+        .finish(&digest128(b"config"), &mut out)
+        .unwrap();
+    assert_eq!(SnapshotReader::new(&out[..]).unwrap().publication(), None);
+
+    // A truncated header is reported as such.
+    let error = SnapshotReader::new(&out[..20]).err().unwrap();
+    assert!(error.to_string().contains("truncated"), "{error}");
+    let _ = fs::remove_dir_all(&dir);
+}

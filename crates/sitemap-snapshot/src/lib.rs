@@ -12,11 +12,12 @@
 //!   (record count and a BLAKE3 digest of the whole file) at the end.
 //! * [`diff`] merges two sorted streams in constant memory.
 //!
-//! # File format (version 1)
+//! # File format (version 2, written; version 1 is still read)
 //!
 //! ```text
-//! magic        8 bytes  "ASNAPv1\n"
+//! magic        8 bytes  "ASNAPv2\n" (version 1: "ASNAPv1\n" and no publication field)
 //! config      16 bytes  digest of the settings that shape the output
+//! publication 16 bytes  digest of the publication described, 0 when unknown (version 2)
 //! records      *        shared (u16 LE) | suffix length (u16 LE) | suffix | content (16) | partition (u32 LE)
 //! end          2 bytes  0xFFFF (in place of `shared`)
 //! count        8 bytes  number of records (u64 LE)
@@ -88,7 +89,12 @@ pub fn to_hex(digest: &Digest) -> String {
     digest.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-const MAGIC: &[u8; 8] = b"ASNAPv1\n";
+/// Version 1: magic and configuration digest.
+const MAGIC_V1: &[u8; 8] = b"ASNAPv1\n";
+/// Version 2 (written): magic, configuration digest, publication digest.
+const MAGIC_V2: &[u8; 8] = b"ASNAPv2\n";
+/// Publication digest stored when none is known.
+const NO_PUBLICATION: Digest = [0; 16];
 /// Bytes hashed and written, or read, per call.
 const CHUNK: usize = 64 * 1024;
 /// Largest `loc` length the format can store, in bytes.
@@ -205,11 +211,12 @@ struct SnapshotWriter<W: Write> {
 }
 
 impl<W: Write> SnapshotWriter<W> {
-    fn new(mut out: W, config: &Digest) -> io::Result<Self> {
+    fn new(mut out: W, config: &Digest, publication: &Digest) -> io::Result<Self> {
         let mut hasher = blake3::Hasher::new();
-        let mut header = Vec::with_capacity(24);
-        header.extend_from_slice(MAGIC);
+        let mut header = Vec::with_capacity(40);
+        header.extend_from_slice(MAGIC_V2);
         header.extend_from_slice(config);
+        header.extend_from_slice(publication);
         out.write_all(&header)?;
         hasher.update(&header);
         Ok(Self {
@@ -268,6 +275,7 @@ pub struct SnapshotBuilder {
     buffered: usize,
     runs: Vec<PathBuf>,
     count: u64,
+    publication: Digest,
 }
 
 impl SnapshotBuilder {
@@ -281,7 +289,17 @@ impl SnapshotBuilder {
             buffered: 0,
             runs: Vec::new(),
             count: 0,
+            publication: NO_PUBLICATION,
         }
+    }
+
+    /// Records the digest of the publication this snapshot describes (the
+    /// engine uses the digest of the published manifest). Readers get it
+    /// back from [`SnapshotReader::publication`], which lets them detect a
+    /// snapshot that does not match the published files.
+    pub fn with_publication(mut self, digest: Digest) -> Self {
+        self.publication = digest;
+        self
     }
 
     /// Records added so far.
@@ -355,7 +373,7 @@ impl SnapshotBuilder {
         sorted: impl IntoIterator<Item = io::Result<Record>>,
         out: impl Write,
     ) -> io::Result<u64> {
-        let mut writer = SnapshotWriter::new(out, config)?;
+        let mut writer = SnapshotWriter::new(out, config, &self.publication)?;
         let mut sources: Vec<Source<'_>> = Vec::with_capacity(self.runs.len() + 2);
         if self.runs.is_empty() {
             self.buffer.sort_unstable();
@@ -498,6 +516,7 @@ pub struct SnapshotReader<R: Read> {
     input: HashingReader<R>,
     codec: Codec,
     config: Digest,
+    publication: Digest,
     count: u64,
     /// The previous record, to check the order without cloning it.
     last_loc: String,
@@ -513,15 +532,23 @@ impl<R: Read> SnapshotReader<R> {
         input
             .read_exact(&mut magic)
             .map_err(|_| invalid("not a snapshot (too short)"))?;
-        if &magic != MAGIC {
-            return Err(invalid("not a snapshot, or an unsupported version"));
-        }
+        let version_2 = match &magic {
+            m if m == MAGIC_V2 => true,
+            m if m == MAGIC_V1 => false,
+            _ => return Err(invalid("not a snapshot, or an unsupported version")),
+        };
+        let truncated = |_| invalid("snapshot is truncated");
         let mut config = [0u8; 16];
-        input.read_exact(&mut config)?;
+        input.read_exact(&mut config).map_err(truncated)?;
+        let mut publication = NO_PUBLICATION;
+        if version_2 {
+            input.read_exact(&mut publication).map_err(truncated)?;
+        }
         Ok(Self {
             input,
             codec: Codec::default(),
             config,
+            publication,
             count: 0,
             last_loc: String::new(),
             last_rest: None,
@@ -532,6 +559,13 @@ impl<R: Read> SnapshotReader<R> {
     /// Digest of the configuration recorded in the header.
     pub fn config(&self) -> &Digest {
         &self.config
+    }
+
+    /// Digest of the publication the snapshot describes, when it recorded
+    /// one (format version 2 written with
+    /// [`SnapshotBuilder::with_publication`]).
+    pub fn publication(&self) -> Option<&Digest> {
+        (self.publication != NO_PUBLICATION).then_some(&self.publication)
     }
 
     fn next_record(&mut self) -> io::Result<Option<Record>> {
