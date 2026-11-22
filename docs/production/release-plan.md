@@ -21,7 +21,7 @@ explicite du propriétaire du projet.
 | Décision | Bloque |
 |---|---|
 | Approbation des ADR-0010 à 0013 (format du snapshot avec BLAKE3) | Stabilité des formats, 1.0 |
-| Clarifications FPL 1.1 et titulaire des droits | Toute distribution |
+| ~~Clarifications FPL 1.1 et titulaire des droits~~ décidé le 2026-11-22 : FPL v1.0 conservée, Fordima Inc. | — |
 | Publication atomique d'ensemble (révisions + pointeur) ou maintien de l'ordre actuel | R2 |
 | MSRV 1.89 et politique MSRV | 1.0 |
 | Nom de l'option de mode d'exécution (`--execution-mode`) | Lot B |
@@ -31,16 +31,18 @@ explicite du propriétaire du projet.
 
 Une version n'est déclarée prête que si toutes sont vraies. Leur état au
 lot F est dans [release-readiness.md](release-readiness.md) : toutes sont
-remplies sauf la licence et l'approbation des formats.
+remplies sauf l'approbation des formats (R18) et les notices des
+dépendances dans les archives (R27).
 
-- [x] Aucun P0 ni P1 technique ouvert (R18 et R19 sont des décisions)
+- [x] Aucun P0 ni P1 technique ouvert (R18 est une décision)
 - [x] Tests et CI verts sur les plateformes annoncées (5, ARM64 compris)
 - [x] Conformité XML vérifiée par des outils indépendants
 - [x] Tests de reprise après interruption (pannes injectées, arrêts brutaux)
 - [x] Fuzzing exécuté, corpus de régression conservé (lot D)
 - [x] Performance mesurée sur les volumes annoncés (jusqu'à 10 M)
 - [x] Documentation cohérente avec le code
-- [ ] Licence finalisée (R19)
+- [x] Licence finalisée (R19 : FPL v1.0, Fordima Inc.)
+- [ ] Notices des dépendances jointes aux binaires (R27)
 - [x] Formats persistants versionnés et politique de compatibilité écrite
 - [x] Aucun secret dans les artefacts
 - [x] Aucun défaut connu de corruption ou de publication incohérente
