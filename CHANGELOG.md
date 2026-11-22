@@ -8,6 +8,14 @@ contain breaking changes.
 
 ### Added
 
+- Lot C (performance): `state.maxFeedOperations` / `apply --max-operations`
+  bound the change feed held in memory (default 500,000 changed URLs,
+  about 400 MB); a larger feed is refused before writing. Resource limits
+  are listed in `docs/concepts/limits.md`. `tools/alloc-profile` counts
+  allocations per pipeline stage. Measurements at 10 M URLs.
+- The planner's cost model is recalibrated on one consistent series of
+  runs (full generations were overestimated up to twice).
+
 - Lot B (planner): execution modes `full`, `skip-unchanged` and `auto`
   (`output.publish = "auto"`, `--execution-mode`); the report's `execution`
   records the mode and why. `explain` gives an execution plan (candidate

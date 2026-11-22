@@ -126,6 +126,10 @@ enum Command {
         /// (stateToken from explain --changes).
         #[arg(long)]
         expect_state: Option<String>,
+        /// Maximum distinct URLs the feed may change (state.maxFeedOperations,
+        /// default 500000; about 800 bytes of memory each).
+        #[arg(long)]
+        max_operations: Option<u64>,
         /// Exit with code 1 when warnings are reported.
         #[arg(long)]
         deny_warnings: bool,
@@ -388,6 +392,7 @@ fn load_config(common: &CommonArgs, out: Option<&Path>) -> Result<ResolvedConfig
         doc.state = Some(StateSection {
             directory: absolute(dir)?.to_string_lossy().into_owned(),
             max_listed: doc.state.as_ref().and_then(|s| s.max_listed),
+            max_feed_operations: doc.state.as_ref().and_then(|s| s.max_feed_operations),
         });
     }
     if let Some(max) = common.max_diagnostics {
@@ -558,9 +563,18 @@ fn main() -> ExitCode {
             out,
             dry_run,
             expect_state,
+            max_operations,
             deny_warnings,
         } => load_config(&common, out.as_deref()).and_then(|mut resolved| {
             resolved.engine.expected_state = expect_state;
+            if let Some(max) = max_operations {
+                if max == 0 {
+                    return Err(config_failure("--max-operations must be at least 1"));
+                }
+                if let Some(settings) = resolved.engine.snapshot.as_mut() {
+                    settings.max_feed_operations = max;
+                }
+            }
             let mode = if dry_run {
                 RunMode::DryRun
             } else {

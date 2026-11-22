@@ -1,0 +1,15 @@
+# Allocation profiler for the engine. Kept outside the workspace because it
+# needs `unsafe` (a counting global allocator), which the workspace forbids.
+[package]
+name = "alloc-profile"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+advanced-sitemap = { path = "../../crates/advanced-sitemap" }
+
+[profile.release]
+debug = true

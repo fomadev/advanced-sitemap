@@ -4,7 +4,7 @@ Priorités : **P0** perte ou corruption de données, faille critique,
 publication incorrecte ; **P1** bloque une utilisation en production ;
 **P2** limitation importante mais contournable ; **P3** amélioration.
 
-État au 2026-11-22, après le lot B.
+État au 2026-11-22, après le lot C.
 
 | ID | Risque | Priorité | État | Lot | Notes |
 |---|---|---|---|---|---|
@@ -16,15 +16,16 @@ publication incorrecte ; **P1** bloque une utilisation en production ;
 | R6 | Dossiers de staging orphelins | P2 | **Corrigé** | A | |
 | R7 | MSRV déclarée fausse et non vérifiée | P2 | **Corrigé** | A | 1.89, job CI |
 | R8 | Sous Windows, remplacer un sitemap ouvert par un autre programme (serveur web) peut échouer : ensemble mélangé | P2 | Ouvert | F | À tester ; documenter ou réessayer |
-| R9 | Le flux de `apply` est tenu en mémoire (une entrée par URL changée) | P2 | Ouvert | C | Documenté ; borne configurable à prévoir |
+| R9 | Le flux de `apply` est tenu en mémoire (une entrée par URL changée) | P2 | **Corrigé** | C | 806 octets par URL mesurés ; borne `state.maxFeedOperations` (500 000 par défaut), refus avant écriture |
 | R10 | Aucun fuzzing (lecteur XML, protocole, décodeur de snapshot, flux) | P1 pour une release stable | Ouvert | D | Tests adversariaux ciblés existants (XXE, DOCTYPE, bombes gzip, profondeur) |
 | R11 | `cargo audit` non exécuté localement | P3 | Ouvert | D | `cargo deny` couvre les avis en CI |
 | R12 | Actions GitHub épinglées par étiquette (`@v4`), pas par empreinte | P3 | Ouvert | D | `permissions: contents: read` déjà en place |
 | R13 | Le planner ne choisit pas automatiquement le mode d'exécution | P2 | **Corrigé** | B | `--execution-mode auto` ; `explain --changes` recommande `apply` ou une régénération ; pas de repli automatique qui ignorerait le flux |
 | R14 | Plan d'`explain` non lié à une version de l'état | P2 | **Corrigé** | B | Jeton d'état et `--expect-state`, vérifiés sous verrou |
 | R22 | `explain` sans `--out` regardait un autre dossier que `generate` et `apply` | P2 | **Corrigé** | B | |
-| R23 | Le modèle de coût est calibré sur une seule machine ; les générations complètes sont surestimées de 12 à 30 % | P3 | Ouvert, documenté | C | Seul l'ordre des modes compte pour la décision |
-| R15 | Tests à 10 M et 50 M d'URL non faits | P2 | Ouvert | C | Mesuré jusqu'à 5 M |
+| R23 | Le modèle de coût est calibré sur une seule machine | P3 | Ouvert, documenté | F | Recalibré au lot C sur une série homogène (1 M et 10 M) ; reste une surestimation de 26 % des générations complètes à 10 M ; seule la comparaison entre modes vaut sur un autre matériel |
+| R15 | Tests à 10 M et 50 M d'URL non faits | P2 | **Corrigé pour 10 M** ; 50 M ouvert | C | 10 M mesuré (mémoire bornée vérifiée) ; 50 M impossible sur la machine de référence (10 Go libres), coûts extrapolés |
+| R24 | Une seule unité de calcul utilisée : la validation (dont l'analyse des URL) domine le temps CPU | P3 | Ouvert | — | Gain possible par validation parallèle avec fusion ordonnée ; à mesurer avant de décider |
 | R16 | Linux ARM64 et Windows ARM64 non testés | P2 | Ouvert | F | macOS ARM64 testé en CI |
 | R17 | API Rust publique non stabilisée (structs publiques à champs publics, enums non `#[non_exhaustive]`) | P1 pour 1.0 | Ouvert | E | Chaque ajout de variante est aujourd'hui un changement incompatible |
 | R18 | ADR-0010 à 0013 non approuvés ; format du snapshot dépendant de l'ADR-0011 | P1 pour 1.0 | Ouvert | Décision | |

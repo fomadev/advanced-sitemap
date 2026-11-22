@@ -163,9 +163,10 @@ pub struct Plan {
     pub notes: Vec<String>,
 }
 
-/// Approximate memory per deduplicated URL (128-bit fingerprint plus hash
-/// table overhead). An approximation, reported as an estimate.
-const DEDUPE_BYTES_PER_URL: u64 = 32;
+/// Peak memory per deduplicated URL (128-bit fingerprint plus hash table
+/// overhead, including the moment the table grows): 43 to 54 bytes
+/// measured at 1 M and 10 M URLs. Reported as an estimate.
+const DEDUPE_BYTES_PER_URL: u64 = 48;
 
 /// Builds a plan, sampling at most `sample_size` records, with the
 /// reference cost model. No artifact is written.

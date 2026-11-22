@@ -41,27 +41,31 @@ pub struct CostModel {
 
 impl CostModel {
     /// Calibrated on the reference laptop of `docs/performance` (Intel
-    /// Core i5-6300U, slow disk, Windows 11), November 2026:
+    /// Core i5-6300U, slow disk, Windows 11), November 2026, from one series
+    /// of runs made under the same disk conditions (lot C):
     ///
-    /// * `pipeline`: `generate --skip-unchanged` rerun without changes,
-    ///   1 M URLs in 3.3 to 4.7 s;
-    /// * `write` and `publish`: `generate` of 1 M URLs (168.6 MB, 20 files)
-    ///   in 16.3 s, and of the same URLs in 1,000 files in 37.5 to 41.3 s;
-    /// * `snapshot`: `--state-dir` adds 3.0 to 3.4 s at 1 M URLs;
-    /// * `delta`: `apply` touching all 24 partitions of 1 M URLs in 21.1 s.
+    /// * `pipeline`: `validate` of 1 M URLs in 4.6 to 6.1 s and of 10 M in
+    ///   54.4 s; reruns without changes in 4.3 to 5.9 microseconds per URL;
+    /// * `write`: `generate` of 1 M URLs (169 MB) 5 to 7 s slower than
+    ///   `validate`, of 10 M (1.70 GB) 26 s slower;
+    /// * `publish`: the same 1 M URLs in 1,000 files instead of 20 take 31
+    ///   to 35 s more;
+    /// * `snapshot`: `--state-dir` adds 1.8 to 2.2 microseconds per URL at
+    ///   10 M, 3.4 to 6.2 s at 1 M;
+    /// * `delta`: `apply` touching all 24 partitions of 1 M URLs in 21.1 s;
+    /// * `dedupe`: peak memory 43 to 54 bytes per URL (the hash table
+    ///   briefly coexists with the one it replaces when it grows).
     ///
-    /// Checked against runs not used for calibration: `generate` of 5 M
-    /// URLs (estimated 81 s, measured 80.4 s) and `apply` of 10,000
-    /// operations over 1,000 partitions (estimated 46 s, measured 49.6 to
-    /// 54.2 s).
+    /// Identical runs differ by up to 20 % on this disk; the model cannot be
+    /// more precise than that.
     pub const REFERENCE: CostModel = CostModel {
-        pipeline_us_per_url: 4.0,
-        write_ns_per_byte: 70.0,
-        publish_ms_per_file: 25.0,
-        snapshot_us_per_url: 3.3,
+        pipeline_us_per_url: 5.0,
+        write_ns_per_byte: 25.0,
+        publish_ms_per_file: 33.0,
+        snapshot_us_per_url: 3.0,
         delta_us_per_touched_url: 17.2,
         snapshot_bytes_per_url: 45.0,
-        dedupe_bytes_per_url: 32.0,
+        dedupe_bytes_per_url: 48.0,
     };
 
     /// Name of the calibration, reported with every plan.
@@ -394,17 +398,26 @@ mod tests {
         let full = &plan.candidates[0];
         let ms = full.milliseconds_max.value().unwrap();
         assert!(
-            (14_000..=19_000).contains(&ms),
-            "1 M: {ms} ms, measured 16.3 s"
+            (8_000..=13_000).contains(&ms),
+            "1 M: {ms} ms, measured 10.3 to 12.7 s"
         );
-        let mut five = facts(false);
-        five.urls = Quantity::Measured(5_000_000);
-        five.files = Quantity::Measured(100);
-        let plan = plan_generate(&five, "full", &CostModel::REFERENCE, String::new());
+        let mut thousand = facts(false);
+        thousand.files = Quantity::Measured(1_000);
+        let plan = plan_generate(&thousand, "full", &CostModel::REFERENCE, String::new());
         let ms = plan.candidates[0].milliseconds_max.value().unwrap();
         assert!(
-            (70_000..=92_000).contains(&ms),
-            "5 M: {ms} ms, measured 80.4 s"
+            (36_000..=50_000).contains(&ms),
+            "1 M in 1,000 files: {ms} ms, measured 43.1 to 46.2 s"
+        );
+        let mut ten = facts(true);
+        ten.urls = Quantity::Measured(10_000_000);
+        ten.files = Quantity::Measured(203);
+        ten.snapshot = true;
+        let plan = plan_generate(&ten, "auto", &CostModel::REFERENCE, String::new());
+        let ms = plan.candidates[1].milliseconds_min.value().unwrap();
+        assert!(
+            (65_000..=95_000).contains(&ms),
+            "10 M rerun with snapshot: {ms} ms, measured 76.6 to 80.4 s"
         );
     }
 

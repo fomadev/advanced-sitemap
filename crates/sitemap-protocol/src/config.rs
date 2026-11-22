@@ -57,6 +57,10 @@ pub struct StateSection {
     /// Default 1000.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_listed: Option<u32>,
+    /// Distinct URLs a change feed may change in one `apply` (the feed is
+    /// held in memory, about 800 bytes per URL). Default 500000.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_feed_operations: Option<u64>,
 }
 
 impl ConfigDocument {

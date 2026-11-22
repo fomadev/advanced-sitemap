@@ -50,6 +50,54 @@ Observations:
   the first `validate` at 1 M read the input from a cold cache. Treat these
   numbers as orders of magnitude.
 
+## 10 million URLs (lot C, 2026-11-22)
+
+Same dataset generator (`make_dataset`, 1.28 GB of JSONL), same machine,
+measured in one series:
+
+| Command | Wall time | Throughput | Peak working set | Output |
+|---|---|---|---|---|
+| `validate` | 54.4 s | ~184 k URL/s | 416 MiB | — |
+| `validate --no-dedupe` | 29.6 s | ~338 k URL/s | 5 MiB | — |
+| `generate` | 80.8 s | ~124 k URL/s | 415 MiB | 203 files, 1.70 GB |
+| Rerun, `--execution-mode auto` (nothing changed) | 58.9 s | | 414 MiB | 0 files rewritten |
+| Rerun with `--state-dir`, first snapshot | 76.6 s | | 461 MiB | snapshot 448 MB |
+| Rerun with `--state-dir`, nothing changed | 80.4 s | | 461 MiB | 10,000,000 unchanged URLs |
+| `explain` (sample of 1,000 records) | 3.7 s | | 2 MiB | estimated 10.39 M records (+3.9 %) |
+
+- Memory without deduplication stays at 5 MiB, as at 1 M and 5 M.
+- With deduplication the peak is 411 MiB of table for 10 M URLs, the
+  transient peak predicted by the model below (2^24 slots).
+- The snapshot adds 46 MiB of memory only (sort budget), and 1.8 to 2.2
+  microseconds per URL.
+- These runs are faster per URL than the 5 M runs of 2026-11-21 (80.4 s
+  for 5 M): the same slow disk varies by up to three times between days.
+  Compare runs of one series only.
+- 50 M URLs were not run: the disk of the reference machine has 10 GB
+  free; the expected costs are 2.2 GB of snapshot, about 1.6 GiB of
+  deduplication table at its peak, and 8.5 GB of output.
+
+## Allocation profile
+
+`tools/alloc-profile` (outside the workspace, because it needs a counting
+global allocator) counts heap allocations per URL, on 200,000 URLs in
+memory:
+
+| Stage | Allocations per URL | Bytes allocated per URL | Share of time |
+|---|---|---|---|
+| Decoding a JSONL record | 2.5 | 115 | about 20 % |
+| Validation | 3.2 | 145 | about 45 %, two thirds of it in URL parsing (`url` crate, WHATWG rules) |
+| Encoding the `<url>` block | 0 | 0 | about 12 % (buffer reused) |
+| Whole `validate` pipeline | 5.7 | 305 | 3.8 microseconds per URL |
+| `generate` with a snapshot | 7.7 | 938 | |
+| A change-feed operation held by `apply` | — | 806 bytes live per operation | |
+
+No allocation was removed in lot C: the remaining ones are the decoded
+strings and the parsed URL, each needed once. The largest CPU cost is URL
+parsing, required for correctness. The only large gain left would be to
+validate on several threads (the machine has two cores), with an ordered
+merge to keep the output deterministic; not done, see the risk register.
+
 ## Republishing only changed files
 
 `generate --skip-unchanged` (`output.publish = "changed"`) compares each new
@@ -181,31 +229,34 @@ upserts and 20 % deletes, applied one after the other:
 
 ## Execution planner estimates
 
-The planner's cost model (`CostModel::REFERENCE`) is calibrated on the runs
-above. Checked on 1 M URLs (sorted, `consistent-hash`, `--state-dir`),
-two series each, after calibration:
+The planner's cost model (`CostModel::REFERENCE`) was recalibrated in lot C
+on one series of runs made under the same disk conditions (the first
+calibration mixed days when the disk was up to three times slower, and
+overestimated full generations twice at 10 M URLs). Estimates against
+measurements:
 
 | Run | Estimated | Measured |
 |---|---|---|
-| `generate`, 24 partitions | 19.7 s | 15.1 and 16.9 s |
-| `generate`, 1,000 partitions | 44.1 s | 37.3 and 39.5 s |
-| Rerun without changes (`auto`) | 7.3 s | 7.3 to 8.9 s |
-| `apply`, 1 operation | 3.3 to 4.0 s | 3.4 to 5.5 s |
-| `apply`, 100 operations, 24 / 1,000 partitions | 21.1 / 7.3 s | 22.0 to 25.0 / 7.3 to 9.5 s |
-| `apply`, 10,000 operations, 24 / 1,000 partitions | 21.1 / 45.5 s | 21.4 to 22.7 / 42.2 to 44.5 s |
+| `generate` 1 M, 20 files | 9.9 s | 10.3 and 12.7 s |
+| `generate` 1 M, 1,000 files | 42 s | 43.1 and 46.2 s |
+| `generate` 10 M, 203 files (records estimated from a sample) | 102 s | 80.8 s |
+| Rerun 10 M without changes, no snapshot / with snapshot | 52 / 83 s | 58.9 / 76.6 to 80.4 s |
+| Peak memory 10 M, no snapshot / with snapshot | 499 / 566 MB | 434 / 483 MB |
+| `apply` 1 operation (24 / 1,000 partitions, lot B) | 3.8 / 3.1 s | 3.4 to 5.5 s |
+| `apply` 100 operations, 24 / 1,000 partitions | 21.0 / 7.7 s | 22.0 to 25.0 / 7.3 to 9.5 s |
+| `apply` 10,000 operations, 24 / 1,000 partitions | 21.0 / 53 s | 21.4 to 22.7 / 42.2 to 44.5 s |
 
-- Full generations are overestimated by 12 to 30 % (the calibration run
-  of 16.3 s was slower than today's runs on the same machine); the other
-  estimates fall inside the measured range or within about 20 %.
-- The decisions were consistent with the measurements: for 100 operations
-  over 24 partitions and 10,000 over 1,000, the planner recommends
-  regenerating. A full generation from the source took 15 to 17 s and 37
-  to 40 s, against 21 to 25 s and 42 to 45 s for `apply` (the regeneration
-  itself, with only some files changed, was not timed separately).
-- Lot B costs nothing measurable: same binary before and after, four
-  alternated runs each, median 7.1 s for both on the unchanged rerun and
-  3.6 s against 3.7 s for `apply` with one operation (hashing the files
-  for the manifest digests is included).
+- Identical runs differ by up to 20 % on this disk; most estimates fall
+  inside that noise. Full generations of 10 M URLs are still
+  overestimated (26 %: writing gets cheaper per byte on long runs), and
+  memory by 15 to 17 % (on the safe side).
+- The planner's decisions do not change: for 100 operations over 24
+  partitions and 10,000 over 1,000, it recommends regenerating; a full
+  generation from the source took 15 to 17 s and 37 to 40 s against 21 to
+  25 s and 42 to 45 s for `apply`.
+- Lot B costs nothing measurable: same commands with the binary from
+  before lot B, four alternated runs each, median 7.1 s for both on the
+  unchanged rerun and 3.6 s against 3.7 s for `apply` with one operation.
 
 ## hreflang reciprocity
 
@@ -232,10 +283,11 @@ itself. The memory follows from how that table works:
 |---|---|---|---|
 | 1,000,000 | 2^21 | 34 MiB | 51 MiB |
 | 5,000,000 | 2^23 | 136 MiB | 204 MiB |
+| 10,000,000 | 2^24 | 272 MiB | 408 MiB |
 | 50,000,000 | 2^26 | 1.06 GiB | 1.6 GiB |
 
-The measured peaks (56 MiB at 1 M, 210 MiB at 5 M, including about 5 MiB
-for the rest of the process) match this model. Steady state is 17 to 34
+The measured peaks (56 MiB at 1 M, 210 MiB at 5 M, 416 MiB at 10 M,
+including about 5 MiB for the rest of the process) match this model. Steady state is 17 to 34
 bytes per distinct URL depending on where `n` falls between two powers of
 two. The peak while growing is 1.5 times the table.
 

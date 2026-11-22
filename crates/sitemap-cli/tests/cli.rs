@@ -589,6 +589,17 @@ fn apply_rewrites_only_the_touched_partition() {
         .map(|n| (n.clone(), fs::read(out.join(&n)).unwrap()))
         .collect();
 
+    // The feed changes two URLs: over a limit of one.
+    let limited = run(&[
+        "apply",
+        "--max-operations",
+        "1",
+        "--changes",
+        feed.to_str().unwrap(),
+    ]);
+    assert_eq!(code(&limited), 2);
+    assert_eq!(json(&limited)["error"]["kind"], "delta-refused");
+
     let dry = run(&["apply", "--dry-run", "--changes", feed.to_str().unwrap()]);
     assert_eq!(code(&dry), 0, "{}", String::from_utf8_lossy(&dry.stdout));
     assert_eq!(json(&dry)["status"], "valid");

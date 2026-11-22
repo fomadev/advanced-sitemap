@@ -259,7 +259,18 @@ impl Engine {
     {
         let mut stats = Stats::default();
         let mut collector = DiagnosticCollector::new(0);
-        let operations = self.read_operations(changes, &mut stats, &mut collector)?;
+        let operations = match self.read_operations(changes, &mut stats, &mut collector) {
+            Ok(operations) => operations,
+            Err(EngineError::DeltaRefused(reason)) => {
+                return Ok(DeltaPlan {
+                    operations: stats.valid_records,
+                    invalid_operations: stats.invalid_records,
+                    refusal: Some(reason),
+                    ..DeltaPlan::default()
+                });
+            }
+            Err(error) => return Err(error),
+        };
         let touched: BTreeSet<u32> = operations
             .keys()
             .filter_map(|loc| self.config.strategy.hash_partition(loc))
@@ -296,6 +307,16 @@ impl Engine {
         plan.touched_bytes = touched.iter().map(size).sum();
         plan.largest_touched_bytes = touched.iter().map(size).max().unwrap_or(0);
         Ok(plan)
+    }
+
+    /// Distinct URLs a feed may change (snapshot settings, or the default).
+    fn max_feed_operations(&self) -> u64 {
+        self.config
+            .snapshot
+            .as_ref()
+            .map_or(super::DEFAULT_MAX_FEED_OPERATIONS, |s| {
+                s.max_feed_operations
+            })
     }
 
     /// Decodes and validates the feed. The last operation on a URL wins;
@@ -369,6 +390,12 @@ impl Engine {
             let operation = (!delete).then_some(entry);
             if operations.insert(loc, operation).is_some() {
                 stats.duplicates += 1;
+            } else if operations.len() as u64 > self.max_feed_operations() {
+                return Err(refuse(format!(
+                    "the feed changes more than {} URLs (about {} MB of memory); raise state.maxFeedOperations, split the feed, or regenerate from the source",
+                    self.max_feed_operations(),
+                    self.max_feed_operations() * 800 / 1_000_000
+                )));
             }
         }
         Ok(operations)
