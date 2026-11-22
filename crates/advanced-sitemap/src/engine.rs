@@ -21,8 +21,10 @@ use sitemap_snapshot::{
 };
 
 mod delta;
+mod doctor;
 
 pub(crate) use delta::DeltaPlan;
+pub use doctor::{Check, CheckStatus, DoctorReport};
 
 use crate::hreflang::ReciprocityChecker;
 use crate::manifest::Manifest;

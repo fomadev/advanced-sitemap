@@ -52,8 +52,8 @@ mod sitemap;
 
 pub use config::{InputSpec, ResolvedConfig, open_input, resolve_config};
 pub use engine::{
-    DEFAULT_MAX_FEED_OPERATIONS, Engine, EngineConfig, EngineError, InvalidPolicy, PublishPolicy,
-    RunMode, SnapshotSettings, records,
+    Check, CheckStatus, DEFAULT_MAX_FEED_OPERATIONS, DoctorReport, Engine, EngineConfig,
+    EngineError, InvalidPolicy, PublishPolicy, RunMode, SnapshotSettings, records,
 };
 pub use manifest::{Manifest, ManifestArtifact};
 pub use report::{
