@@ -15,7 +15,7 @@
 //! the engine or holding elements the reader does not keep, or a previous
 //! publication that does not name its partitions `<stem>-<n>.xml`.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io;
 
 use sitemap_index::{PartitionSummary, PushError, partition_name};
@@ -57,28 +57,8 @@ impl Engine {
         let description = store.describe();
         let config = &self.config;
         let _state_lock = self.lock_destination(store)?;
-        if config.strategy.hash_partitions().is_none() {
-            return Err(refuse(
-                "the delta mode needs the stable-hash or consistent-hash strategy",
-            ));
-        }
-        if config.hreflang_reciprocity {
-            return Err(refuse(
-                "hreflang reciprocity is checked across all entries; run a full generation",
-            ));
-        }
-        if !config.manifest {
-            return Err(refuse(
-                "the delta mode needs the manifest of the previous publication",
-            ));
-        }
-        let (Some(settings), Some(snapshot_path)) = (&config.snapshot, config.snapshot_path())
-        else {
-            return Err(refuse(
-                "the delta mode needs state.directory (the URL snapshot)",
-            ));
-        };
-        let settings_digest = digest128(config.output_settings().as_bytes());
+        self.check_expected_state(&*store)?;
+        let (settings, _) = self.delta_settings()?;
 
         let mut stats = Stats::default();
         let mut collector = DiagnosticCollector::new(config.max_diagnostics);
@@ -105,57 +85,10 @@ impl Engine {
                 touched.entry(partition).or_default().push((loc, operation));
             }
         }
-
-        // First pass over the snapshot: expected content of the touched
-        // partitions, URL count of every partition.
-        let previous = self.read_previous(&snapshot_path, &settings_digest, &touched)?;
-
-        // The previous manifest and index describe the partitions kept as
-        // published.
-        let stem = &config.layout.stem;
-        let manifest_bytes = store
-            .read_published(&self.manifest_name()?)?
-            .ok_or_else(|| refuse("the previous publication has no manifest"))?;
-        if let Some(described) = previous.publication
-            && described != digest128(&manifest_bytes)
-        {
-            return Err(refuse(
-                "the snapshot describes another publication than the one in place (a run was interrupted after publishing); run a full generation",
-            ));
-        }
-        let manifest = Manifest::parse(&manifest_bytes)
-            .ok_or_else(|| refuse("the previous publication has no readable manifest"))?;
-        let lastmods = self.previous_index_lastmods(&*store, &manifest)?;
-        let mut reused = Vec::new();
-        for (&partition, &urls) in &previous.counts {
-            if touched.contains_key(&partition) {
-                continue;
-            }
-            let name = partition_name(stem, partition)?;
-            let artifact = manifest
-                .artifacts
-                .iter()
-                .find(|a| a.name == name.as_str() && a.kind == "sitemap")
-                .ok_or_else(|| {
-                    refuse(format!(
-                        "the previous publication does not list {name}; run a full generation"
-                    ))
-                })?;
-            if artifact.entries != Some(urls) {
-                return Err(refuse(format!(
-                    "{name} lists {:?} URLs but the snapshot has {urls}; run a full generation",
-                    artifact.entries
-                )));
-            }
-            reused.push(PartitionSummary {
-                digest: artifact.digest.as_deref().and_then(parse_digest),
-                id: partition,
-                lastmod: lastmods.get(name.as_str()).cloned().flatten(),
-                staged_name: name,
-                urls,
-                bytes: artifact.bytes,
-            });
-        }
+        let touched_ids: BTreeSet<u32> = touched.keys().copied().collect();
+        let DeltaPreparation {
+            previous, reused, ..
+        } = self.prepare_delta(&*store, &touched_ids)?;
         let kept_urls: u64 = reused.iter().map(|p| p.urls).sum();
 
         store.set_compare_with_published(mode == RunMode::Publish);
@@ -214,6 +147,155 @@ impl Engine {
             keep_previous: Some(kept),
         };
         self.finish_run(outcome, store, mode, description)
+    }
+
+    /// Checks the settings the delta mode needs; returns the snapshot
+    /// settings and the snapshot path.
+    fn delta_settings(
+        &self,
+    ) -> Result<(&super::SnapshotSettings, std::path::PathBuf), EngineError> {
+        let config = &self.config;
+        if config.strategy.hash_partitions().is_none() {
+            return Err(refuse(
+                "the delta mode needs the stable-hash or consistent-hash strategy",
+            ));
+        }
+        if config.hreflang_reciprocity {
+            return Err(refuse(
+                "hreflang reciprocity is checked across all entries; run a full generation",
+            ));
+        }
+        if !config.manifest {
+            return Err(refuse(
+                "the delta mode needs the manifest of the previous publication",
+            ));
+        }
+        match (&config.snapshot, config.snapshot_path()) {
+            (Some(settings), Some(path)) => Ok((settings, path)),
+            _ => Err(refuse(
+                "the delta mode needs state.directory (the URL snapshot)",
+            )),
+        }
+    }
+
+    /// Reads the snapshot, the manifest and the index, and checks that they
+    /// describe the publication in place. Writes nothing. The touched
+    /// partitions themselves are only checked when they are read back.
+    fn prepare_delta(
+        &self,
+        store: &dyn ArtifactStore,
+        touched: &BTreeSet<u32>,
+    ) -> Result<DeltaPreparation, EngineError> {
+        let config = &self.config;
+        let (_, snapshot_path) = self.delta_settings()?;
+        let settings_digest = digest128(config.output_settings().as_bytes());
+        // First pass over the snapshot: expected content of the touched
+        // partitions, URL count of every partition.
+        let previous = self.read_previous(&snapshot_path, &settings_digest, touched)?;
+
+        // The previous manifest and index describe the partitions kept as
+        // published.
+        let stem = &config.layout.stem;
+        let manifest_bytes = store
+            .read_published(&self.manifest_name()?)?
+            .ok_or_else(|| refuse("the previous publication has no manifest"))?;
+        if let Some(described) = previous.publication
+            && described != digest128(&manifest_bytes)
+        {
+            return Err(refuse(
+                "the snapshot describes another publication than the one in place (a run was interrupted after publishing); run a full generation",
+            ));
+        }
+        let manifest = Manifest::parse(&manifest_bytes)
+            .ok_or_else(|| refuse("the previous publication has no readable manifest"))?;
+        let lastmods = self.previous_index_lastmods(store, &manifest)?;
+        let mut reused = Vec::new();
+        for (&partition, &urls) in &previous.counts {
+            let name = partition_name(stem, partition)?;
+            let artifact = manifest
+                .artifacts
+                .iter()
+                .find(|a| a.name == name.as_str() && a.kind == "sitemap")
+                .ok_or_else(|| {
+                    refuse(format!(
+                        "the previous publication does not list {name}; run a full generation"
+                    ))
+                })?;
+            if artifact.entries != Some(urls) {
+                return Err(refuse(format!(
+                    "{name} lists {:?} URLs but the snapshot has {urls}; run a full generation",
+                    artifact.entries
+                )));
+            }
+            if touched.contains(&partition) {
+                continue;
+            }
+            reused.push(PartitionSummary {
+                digest: artifact.digest.as_deref().and_then(parse_digest),
+                id: partition,
+                lastmod: lastmods.get(name.as_str()).cloned().flatten(),
+                staged_name: name,
+                urls,
+                bytes: artifact.bytes,
+            });
+        }
+        Ok(DeltaPreparation {
+            previous,
+            reused,
+            manifest,
+        })
+    }
+
+    /// Plans an `apply` without writing anything: validates the feed, finds
+    /// the touched partitions and checks the preconditions. A refusal is
+    /// returned in the plan, not as an error.
+    pub(crate) fn plan_delta<I>(
+        &self,
+        changes: I,
+        store: &dyn ArtifactStore,
+    ) -> Result<DeltaPlan, EngineError>
+    where
+        I: IntoIterator<Item = io::Result<SourceRecord<ChangeRecord>>>,
+    {
+        let mut stats = Stats::default();
+        let mut collector = DiagnosticCollector::new(0);
+        let operations = self.read_operations(changes, &mut stats, &mut collector)?;
+        let touched: BTreeSet<u32> = operations
+            .keys()
+            .filter_map(|loc| self.config.strategy.hash_partition(loc))
+            .collect();
+        let mut plan = DeltaPlan {
+            operations: stats.valid_records,
+            invalid_operations: stats.invalid_records,
+            touched_partitions: touched.len() as u64,
+            ..DeltaPlan::default()
+        };
+        let prepared = match self.prepare_delta(store, &touched) {
+            Ok(prepared) => prepared,
+            Err(EngineError::DeltaRefused(reason)) => {
+                plan.refusal = Some(reason);
+                return Ok(plan);
+            }
+            Err(error) => return Err(error),
+        };
+        plan.total_urls = prepared.previous.counts.values().sum();
+        plan.partitions = prepared.previous.counts.len() as u64;
+        plan.touched_urls = touched
+            .iter()
+            .filter_map(|p| prepared.previous.counts.get(p))
+            .sum();
+        let size = |partition: &u32| {
+            let name = format!("{}-{partition}.xml", self.config.layout.stem);
+            prepared
+                .manifest
+                .artifacts
+                .iter()
+                .find(|a| a.name == name)
+                .map_or(0, |a| a.bytes)
+        };
+        plan.touched_bytes = touched.iter().map(size).sum();
+        plan.largest_touched_bytes = touched.iter().map(size).max().unwrap_or(0);
+        Ok(plan)
     }
 
     /// Decodes and validates the feed. The last operation on a URL wins;
@@ -296,7 +378,7 @@ impl Engine {
         &self,
         path: &std::path::Path,
         settings_digest: &Digest,
-        touched: &BTreeMap<u32, Vec<(&String, &Option<UrlEntry>)>>,
+        touched: &BTreeSet<u32>,
     ) -> Result<Previous, EngineError> {
         let reader = open_snapshot(path)
             .map_err(|e| {
@@ -321,7 +403,7 @@ impl Engine {
                 ))
             })?;
             *previous.counts.entry(record.partition).or_default() += 1;
-            if touched.contains_key(&record.partition) {
+            if touched.contains(&record.partition) {
                 previous
                     .expected
                     .entry(record.partition)
@@ -468,6 +550,38 @@ impl Engine {
         })?;
         Ok(Some((partitions, builder)))
     }
+}
+
+/// Result of [`Engine::prepare_delta`].
+struct DeltaPreparation {
+    previous: Previous,
+    /// Partitions kept as published.
+    reused: Vec<PartitionSummary>,
+    /// The published manifest.
+    manifest: Manifest,
+}
+
+/// What an `apply` would do, computed without writing (for `explain`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct DeltaPlan {
+    /// Valid operations (after the last-one-wins rule).
+    pub operations: u64,
+    /// Invalid operations.
+    pub invalid_operations: u64,
+    /// Why the delta mode cannot run, if it cannot.
+    pub refusal: Option<String>,
+    /// URLs in the previous publication.
+    pub total_urls: u64,
+    /// Partitions in the previous publication.
+    pub partitions: u64,
+    /// Partitions the feed touches.
+    pub touched_partitions: u64,
+    /// URLs in the touched partitions (before the operations).
+    pub touched_urls: u64,
+    /// Bytes of the touched partition files.
+    pub touched_bytes: u64,
+    /// Size of the largest touched partition file.
+    pub largest_touched_bytes: u64,
 }
 
 /// What the previous snapshot says.
