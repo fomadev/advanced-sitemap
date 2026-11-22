@@ -1,0 +1,1 @@
+{"loc":"https://example.com/v","videos":[{"thumbnailLoc":"https://example.com/t.jpg","title":"T","description":"D","contentLoc":"https://example.com/v.mp4","duration":60,"rating":4.5,"tags":["a"],"restriction":{"relationship":"allow","countries":["FR"]}}]}

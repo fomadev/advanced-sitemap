@@ -235,7 +235,7 @@ pub fn escape_into(out: &mut Vec<u8>, text: &str) -> Result<(), XmlError> {
 }
 
 fn is_forbidden(ch: char) -> bool {
-    matches!(ch, '\u{0}'..='\u{8}' | '\u{B}' | '\u{C}' | '\u{E}'..='\u{1F}' | '\u{FFFE}' | '\u{FFFF}')
+    sitemap_model::is_xml_forbidden(ch)
 }
 
 fn element(out: &mut Vec<u8>, indent: &str, name: &str, text: &str) -> Result<(), XmlError> {

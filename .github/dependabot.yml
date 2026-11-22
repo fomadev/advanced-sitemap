@@ -1,0 +1,13 @@
+# Keeps the pinned GitHub Actions (by commit hash) and the Cargo
+# dependencies current: updates arrive as pull requests, never directly.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

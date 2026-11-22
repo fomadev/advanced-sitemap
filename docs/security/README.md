@@ -6,11 +6,11 @@
 |---|---|
 | Code execution | Configuration files are data only. Nothing in them is evaluated or executed. There is no plugin loading |
 | `unsafe` | Forbidden in the whole workspace (`unsafe_code = "forbid"`) |
-| Malformed XML output | Text is escaped, and characters forbidden by XML 1.0 are refused. URLs are emitted in their WHATWG ASCII form |
+| Malformed XML output | Text is escaped. Characters forbidden by XML 1.0 are reported by validation (`NEWS_TEXT_INVALID`, `VIDEO_TEXT_INVALID`, `VIDEO_UPLOADER_INVALID`) and refused by the writer, with one shared rule. URLs are emitted in their WHATWG ASCII form |
 | Path traversal in outputs | Artifact names are restricted to `[A-Za-z0-9._-]`, at most 128 characters, with no leading dot. A name can never contain a separator or `..` |
 | Partial publication | Writes go to a staging directory. Nothing is published if the run fails. Published files are never deleted |
 | Oversized input | JSONL lines are bounded (1 MiB by default), JSON documents are bounded (256 MiB), and URLs are shorter than 2,048 characters |
-| Memory | Streaming memory is constant except for the deduplication set (about 40 bytes per URL), which can be disabled |
+| Memory | Streaming memory is constant except for the deduplication set (17 to 54 bytes per URL, measured), which can be disabled; see [limits](../concepts/limits.md) |
 | Clock and environment | Never read by the engine |
 | Network | The engine makes no network access in this version |
 
@@ -71,10 +71,13 @@
   an isolation boundary (WASM or a separate process speaking the JSON
   protocol). An unstable Rust ABI will not be exposed.
 
-## To do before 1.0
+## Fuzzing and supply chain
 
-- Fuzz targets (`cargo fuzz`) for the W3C Datetime parser, the hreflang
-  parser, the JSONL reader and XML escaping. A property-style test already
-  covers escaping round trips.
-- `cargo audit` and `cargo deny` in CI (the workflow is prepared but has not
-  run yet).
+- Reproducible fuzzing on stable Rust runs with the tests
+  (`tests/fuzz.rs`, `FUZZ_ITERATIONS`, `FUZZ_SEED`) and longer in the CI job
+  `fuzz-stable`; coverage-guided targets for `cargo fuzz` are in `fuzz/`
+  and run weekly. Results and the defect found are in
+  [docs/production/security-report.md](../production/security-report.md).
+- `cargo deny` checks advisories (RustSec, the database of `cargo audit`),
+  licenses, duplicate versions and sources on every pull request. GitHub
+  Actions are pinned by commit hash and kept current by Dependabot.

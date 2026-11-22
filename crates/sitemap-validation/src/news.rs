@@ -119,7 +119,24 @@ impl Validator {
                 );
                 None
             }
-            Some(text) => Some(text.to_owned()),
+            Some(text) => match sitemap_model::xml_forbidden_char(text) {
+                Some(ch) => {
+                    self.emit(
+                        out,
+                        Diagnostic::new(
+                            DiagnosticCode::NewsTextInvalid,
+                            format!(
+                                "`{field}` contains U+{:04X}, which XML 1.0 forbids",
+                                u32::from(ch)
+                            ),
+                            location.with_field(field),
+                        )
+                        .with_suggestion("Remove control characters from the text."),
+                    );
+                    None
+                }
+                None => Some(text.to_owned()),
+            },
         }
     }
 }

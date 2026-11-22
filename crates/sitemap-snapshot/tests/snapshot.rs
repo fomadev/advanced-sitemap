@@ -282,3 +282,73 @@ fn version_2_records_the_publication_digest() {
     assert!(error.to_string().contains("truncated"), "{error}");
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// Reproducible fuzzing of the decoder (lot D): mutated snapshots never
+/// panic, and a mutated file is never accepted with different records
+/// (the checksum catches it). `FUZZ_ITERATIONS` sets the campaign size.
+#[test]
+fn fuzz_snapshot_decoder() {
+    let iterations: usize = std::env::var("FUZZ_ITERATIONS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(3_000);
+    let mut state: u64 = std::env::var("FUZZ_SEED")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0x5eed);
+    let mut next = move || {
+        state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
+        let mut z = state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        z ^ (z >> 31)
+    };
+    let dir = temp("fuzz");
+    let records: Vec<Record> = (0..300)
+        .map(|i| {
+            record(
+                &format!("https://example.com/p/{:04}", i * 7 % 300),
+                (i % 5) as u8,
+                i % 4 + 1,
+            )
+        })
+        .collect();
+    let (valid, _) = build(&records, 1 << 20, &dir);
+    let original = read(&valid).unwrap();
+    for _ in 0..iterations {
+        let mut bytes = valid.clone();
+        for _ in 0..1 + next() % 4 {
+            let len = bytes.len().max(1);
+            let i = (next() % len as u64) as usize;
+            match next() % 5 {
+                0 if !bytes.is_empty() => {
+                    let at = i.min(bytes.len() - 1);
+                    bytes[at] ^= 1 << (next() % 8);
+                }
+                1 => bytes.truncate(i),
+                2 => bytes.insert(i.min(bytes.len()), next() as u8),
+                3 if i + 2 <= bytes.len() => {
+                    // Large length fields.
+                    bytes[i] = 0xfe;
+                    bytes[i + 1] = 0xff;
+                }
+                _ => {
+                    if i < bytes.len() {
+                        bytes.remove(i);
+                    }
+                }
+            }
+        }
+        if let Ok(reader) = SnapshotReader::new(&bytes[..]) {
+            let result: io::Result<Vec<Record>> = reader.collect();
+            if let Ok(records) = result {
+                assert_eq!(records, original, "a damaged snapshot was accepted");
+            }
+            // Diffing against a damaged snapshot reports an error or a set.
+            if let Ok(reader) = SnapshotReader::new(&bytes[..]) {
+                let _ = diff(SnapshotReader::new(&valid[..]).unwrap(), reader, 10);
+            }
+        }
+    }
+    let _ = fs::remove_dir_all(&dir);
+}

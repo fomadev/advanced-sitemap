@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">
+  <url>
+    <loc>https://www.example.org/business/article55.html</loc>
+    <news:news>
+      <news:publication>
+        <news:name>The Example Times</news:name>
+        <news:language>en</news:language>
+      </news:publication>
+      <news:publication_date>2026-11-20T19:20:30+01:00</news:publication_date>
+      <news:title>Companies A, B &amp; C in Merger Talks</news:title>
+    </news:news>
+  </url>
+  <url>
+    <loc>https://www.example.org/zh/article56.html</loc>
+    <news:news>
+      <news:publication>
+        <news:name>The Example Times</news:name>
+        <news:language>zh-tw</news:language>
+      </news:publication>
+      <news:publication_date>2026-11-21</news:publication_date>
+      <news:title>公司 A 和 B 正在進行合併談判</news:title>
+    </news:news>
+  </url>
+  <url>
+    <loc>https://www.example.org/about</loc>
+  </url>
+</urlset>
