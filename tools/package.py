@@ -4,8 +4,8 @@ Optionally checks the binary first (--smoke): `--version` reports the
 workspace version, and `generate` reproduces the expected files of the
 conformance fixtures byte for byte. Then writes
 `advanced-sitemap-<version>-<commit>-<target>.(tar.gz|zip)` with the
-binary, LICENSE, README.md, CHANGELOG.md and BUILDINFO.txt, and its
-`.sha256`. Archive members have fixed timestamps and owners, so the
+binary, LICENSE, THIRD-PARTY-NOTICES.txt (tools/notices.py), README.md,
+CHANGELOG.md and BUILDINFO.txt, and its `.sha256`. Archive members have fixed timestamps and owners, so the
 archive depends only on the files it contains.
 
 Usage: python package.py --target T --binary PATH --commit SHA --out DIR [--smoke]
@@ -95,9 +95,18 @@ def main():
         f"compiler {rustc_version()}\n"
         "Release candidate: not a published release.\n"
     ).encode()
+    with tempfile.TemporaryDirectory() as tmp:
+        notices_path = Path(tmp) / "THIRD-PARTY-NOTICES.txt"
+        subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "notices.py"),
+             "--target", args.target, "--out", str(notices_path)],
+            check=True,
+        )
+        notices = notices_path.read_bytes()
     members = [
         (exe, binary.read_bytes(), 0o755),
         ("LICENSE", (ROOT / "LICENSE").read_bytes(), 0o644),
+        ("THIRD-PARTY-NOTICES.txt", notices, 0o644),
         ("README.md", (ROOT / "README.md").read_bytes(), 0o644),
         ("CHANGELOG.md", (ROOT / "CHANGELOG.md").read_bytes(), 0o644),
         ("BUILDINFO.txt", buildinfo, 0o644),
