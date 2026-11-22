@@ -22,7 +22,9 @@ use sitemap_index::{PartitionSummary, PushError, partition_name};
 use sitemap_model::{Diagnostic, DiagnosticCode, Location, RawUrlRecord, UrlEntry, W3cDateTime};
 use sitemap_protocol::{ChangeRecord, DecodeError, SourceRecord};
 use sitemap_reader::{InspectOptions, Item, inspect};
-use sitemap_snapshot::{Digest, Record as SnapshotRecord, SnapshotBuilder, digest128};
+use sitemap_snapshot::{
+    Digest, Record as SnapshotRecord, SequenceDigest, SnapshotBuilder, digest128,
+};
 use sitemap_storage::ArtifactStore;
 use sitemap_xml::{Namespaces, encode_url};
 
@@ -324,7 +326,7 @@ impl Engine {
                     .expected
                     .entry(record.partition)
                     .or_default()
-                    .insert(record.loc, record.content);
+                    .update(&record.loc, &record.content);
             }
         }
         Ok(previous)
@@ -389,7 +391,7 @@ impl Engine {
             config.namespaces,
             &config.layout.stem,
         );
-        let empty = BTreeMap::new();
+        let empty = SequenceDigest::default();
         for (&partition, operations) in touched {
             let expected = previous.expected.get(&partition).unwrap_or(&empty);
             let mut entries = read_partition(
@@ -465,21 +467,23 @@ impl Engine {
 struct Previous {
     /// URLs per partition.
     counts: BTreeMap<u32, u64>,
-    /// Expected `loc -> content digest` of the touched partitions.
-    expected: HashMap<u32, BTreeMap<String, Digest>>,
+    /// Expected content of the touched partitions (snapshot records in
+    /// `loc` order), in constant memory per partition.
+    expected: HashMap<u32, SequenceDigest>,
 }
 
-/// Reads a published partition back and checks it entry by entry against
-/// the snapshot. Returns its entries by URL.
+/// Reads a published partition back and checks it against the snapshot:
+/// same URLs, same encoded content (compared as a [`SequenceDigest`] in
+/// `loc` order). Returns its entries by URL.
 fn read_partition(
     store: &dyn ArtifactStore,
     stem: &str,
     partition: u32,
-    expected: &BTreeMap<String, Digest>,
+    expected: &SequenceDigest,
     max_bytes: u64,
 ) -> Result<BTreeMap<String, UrlEntry>, EngineError> {
     let mut entries = BTreeMap::new();
-    if expected.is_empty() {
+    if expected.records() == 0 {
         return Ok(entries);
     }
     let name = partition_name(stem, partition)?;
@@ -488,25 +492,19 @@ fn read_partition(
         .ok_or_else(|| refuse(format!("{name} is in the snapshot but not published")))?;
     let mut options = InspectOptions::default();
     options.limits.max_bytes = max_bytes;
-    let mut block = Vec::new();
-    let mut mismatch = None;
     let report = inspect(&bytes[..], &options, |item| {
-        let Item::Url(entry) = item else { return };
-        block.clear();
-        let same = encode_url(&entry, &mut block).is_ok()
-            && expected.get(entry.loc.as_str()) == Some(&digest128(&block));
-        if !same && mismatch.is_none() {
-            mismatch = Some(entry.loc.as_str().to_owned());
+        if let Item::Url(entry) = item {
+            entries.insert(entry.loc.as_str().to_owned(), entry);
         }
-        entries.insert(entry.loc.as_str().to_owned(), entry);
     })?;
-    let modified = |detail: String| {
+    drop(bytes);
+    let modified = |detail: &str| {
         refuse(format!(
             "{name} differs from the snapshot ({detail}): it was changed outside the engine; run a full generation"
         ))
     };
     if !report.complete || report.diagnostics.iter().any(Diagnostic::is_error) {
-        return Err(modified("it cannot be read back without errors".to_owned()));
+        return Err(modified("it cannot be read back without errors"));
     }
     if !report.unsupported_extensions.is_empty() {
         return Err(refuse(format!(
@@ -519,15 +517,22 @@ fn read_partition(
                 .join(", ")
         )));
     }
-    if let Some(loc) = mismatch {
-        return Err(modified(format!("entry {loc}")));
+    let mut found = SequenceDigest::default();
+    let mut block = Vec::new();
+    for (loc, entry) in &entries {
+        block.clear();
+        encode_url(entry, &mut block).map_err(EngineError::Xml)?;
+        found.update(loc, &digest128(&block));
     }
-    if entries.len() != expected.len() {
-        return Err(modified(format!(
+    if found.records() != expected.records() {
+        return Err(modified(&format!(
             "{} entries instead of {}",
-            entries.len(),
-            expected.len()
+            found.records(),
+            expected.records()
         )));
+    }
+    if found.finish() != expected.finish() {
+        return Err(modified("an entry has different content"));
     }
     Ok(entries)
 }
