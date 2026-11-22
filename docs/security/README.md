@@ -31,6 +31,14 @@
 - Errors of the caller's reader are returned as I/O errors and never
   confused with corrupt data.
 
+### State directory (`state.directory`)
+
+- It holds `<stem>.snapshot`: every published URL, its content digest and
+  its partition. The URLs are public, but the file is an internal state:
+  keep the directory outside the served output directory.
+- The snapshot is checked (count and BLAKE3 checksum) before it is trusted;
+  a damaged or foreign file is ignored and replaced (`SNAPSHOT_INVALID`).
+
 ## Trust boundaries
 
 - The **CLI** trusts its operator. Input and output paths, including

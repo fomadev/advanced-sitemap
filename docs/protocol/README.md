@@ -50,6 +50,8 @@ JSON Schemas (draft 2020-12) are in [`schemas/`](../../schemas).
 | `output.extensions` | `[]` | Since 1.1. Extra namespaces declared on every file: `video`, `news`. `xhtml` and `image` are always declared. A record using an undeclared extension gets `EXTENSION_NOT_DECLARED` |
 | `source` / `urls` | none | A file, or inline records. The two are mutually exclusive |
 | `robots` | none | Since 1.1. Publishes `robots.txt` next to the sitemaps (see below) |
+| `state.directory` | none | Since 1.1. Keeps a URL-level snapshot (`<stem>.snapshot`) there and adds `changes` to the report. Relative to the configuration file; keep it out of the public output directory |
+| `state.maxListed` | `1000` | URLs listed per change kind in `changes` (counts stay exact) |
 
 ### robots.txt (since 1.1)
 
@@ -214,6 +216,34 @@ Google's news sitemap documentation and its `sitemap-news/0.9` XSD:
   ]
 }
 ```
+
+## Change report (`changes`, since 1.1)
+
+With `state.directory`, the report gains:
+
+```json
+"changes": {
+  "previousSnapshot": true,
+  "configChanged": false,
+  "added": 1, "removed": 0, "modified": 2, "moved": 0, "unchanged": 999997,
+  "partitionsTouched": [3, 10],
+  "addedUrls": ["https://example.com/new"],
+  "removedUrls": [],
+  "modifiedUrls": ["https://example.com/a", "https://example.com/b"],
+  "truncated": false
+}
+```
+
+- A URL is *modified* when its encoded `<url>` block changes (any field,
+  extensions included), *moved* when only its partition changes.
+- `previousSnapshot: false`: no readable snapshot was found, so every URL
+  counts as added. A damaged snapshot is reported with `SNAPSHOT_INVALID`
+  and replaced.
+- `configChanged`: a setting that shapes the output changed (limits,
+  strategy, partitions, namespaces, file stem, index mode, public base URL,
+  engine version).
+- The snapshot is replaced only after a successful publication. `validate`
+  (dry run) reports changes and leaves it untouched.
 
 ## Manifest
 

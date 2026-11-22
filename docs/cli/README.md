@@ -39,6 +39,7 @@ Command-line options override the configuration document.
 | `--on-invalid fail\|skip` | `validation.onInvalid` |
 | `--no-dedupe` | `validation.dedupe = false` |
 | `--hreflang-reciprocity` | `validation.hreflangReciprocity = true` |
+| `--state-dir DIR` | `state.directory` (snapshot and change report) |
 | `--max-diagnostics N` | `validation.maxDiagnostics` |
 | `--strategy sequential\|stable-hash` | `partitioning.strategy` |
 | `--partitions N` | `partitioning.partitions` |

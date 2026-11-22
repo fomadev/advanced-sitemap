@@ -8,6 +8,13 @@ contain breaking changes.
 
 ### Added
 
+- Phase B of the Lifecycle Engine: `sitemap-snapshot` crate (BLAKE3-128
+  digests, sorted prefix-compressed binary snapshot with an integrity
+  trailer, external sort with a memory budget, streaming diff) and
+  `state.directory` / `--state-dir`, which add a `changes` section to the
+  report (added, removed, modified, moved, unchanged, partitions touched).
+  New diagnostic `SNAPSHOT_INVALID`.
+
 - Phase A of the Lifecycle Engine: `output.publish = "changed"` and
   `generate --skip-unchanged` republish only files whose bytes change, with
   the same published result. `FsStore` compares each new artifact with the
@@ -62,6 +69,8 @@ contain breaking changes.
   cost for staged files that are never published.
 - `ArtifactReport` gains `unchanged`; `EngineConfig` gains `publish`;
   `OutputSection` gains `publish`.
+- `EngineConfig` gains `snapshot`, `ConfigDocument` gains `state`,
+  `GenerationReport` gains `changes`, `Partitioner` gains `last_block`.
 - `UrlEntry` has a new `videos` field and `Namespaces` a new `video` field:
   code that builds them with struct literals must add the field.
   `Namespaces::DEFAULT` (`xhtml` and `image`) is what the engine declares by
