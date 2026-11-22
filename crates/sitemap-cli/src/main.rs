@@ -220,6 +220,7 @@ impl From<EngineError> for Failure {
             EngineError::Config(_) | EngineError::Protocol(_) => (EXIT_CONFIG, "config"),
             EngineError::Io(_) => (EXIT_IO, "io"),
             EngineError::Xml(_) => (EXIT_INTERNAL, "internal"),
+            EngineError::DeltaRefused(_) => (EXIT_CONFIG, "delta-refused"),
         };
         Failure {
             code,

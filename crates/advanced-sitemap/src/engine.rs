@@ -20,6 +20,8 @@ use sitemap_snapshot::{
     Digest, Record as SnapshotRecord, SnapshotBuilder, diff, digest128, open_file as open_snapshot,
 };
 
+mod delta;
+
 use crate::hreflang::ReciprocityChecker;
 use crate::manifest::Manifest;
 use crate::report::ChangesReport;
@@ -153,6 +155,9 @@ pub enum EngineError {
     Protocol(sitemap_protocol::ProtocolError),
     /// Serialization failed for a reason validation should have prevented.
     Xml(XmlError),
+    /// The delta mode cannot reproduce a full generation; nothing was
+    /// written. The message says why and what to run instead.
+    DeltaRefused(String),
 }
 
 impl fmt::Display for EngineError {
@@ -162,6 +167,7 @@ impl fmt::Display for EngineError {
             EngineError::Io(error) => write!(f, "I/O error: {error}"),
             EngineError::Protocol(error) => write!(f, "{error}"),
             EngineError::Xml(error) => write!(f, "XML error: {error}"),
+            EngineError::DeltaRefused(reason) => write!(f, "delta refused: {reason}"),
         }
     }
 }
