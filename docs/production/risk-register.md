@@ -4,7 +4,7 @@ Priorités : **P0** perte ou corruption de données, faille critique,
 publication incorrecte ; **P1** bloque une utilisation en production ;
 **P2** limitation importante mais contournable ; **P3** amélioration.
 
-État au 2026-11-22, après le lot A.
+État au 2026-11-22, après le lot B.
 
 | ID | Risque | Priorité | État | Lot | Notes |
 |---|---|---|---|---|---|
@@ -12,7 +12,7 @@ publication incorrecte ; **P1** bloque une utilisation en production ;
 | R2 | Publication d'un ensemble de fichiers non atomique : fenêtre où une URL est dans deux fichiers ou dans aucun | P2 | Ouvert, documenté | Décision | Converge à l'exécution suivante ; révisions + pointeur à décider |
 | R3 | Renommages non durables sous Linux en cas de coupure | P2 | **Corrigé** (Unix) | A | Windows : dépend du système de fichiers |
 | R4 | Résistance à une coupure électrique non démontrée | P2 | Ouvert | F | Pas de banc de coupure ; garanties fondées sur `fsync`/`rename` |
-| R5 | Snapshot non relié à la publication qu'il décrit (publication interrompue avant son remplacement) | P2 | **Corrigé** | B | Sortie jamais fausse ; rapport de changements possiblement inexact, `apply` refuse les partitions touchées incohérentes. Piste : empreinte du manifest enregistrée avec le snapshot |
+| R5 | Snapshot non relié à la publication qu'il décrit (publication interrompue avant son remplacement) | P2 | **Corrigé** | B | Le manifest liste l'empreinte de chaque fichier et le snapshot v2 celle du manifest : `SNAPSHOT_STALE` et refus d'`apply` |
 | R6 | Dossiers de staging orphelins | P2 | **Corrigé** | A | |
 | R7 | MSRV déclarée fausse et non vérifiée | P2 | **Corrigé** | A | 1.89, job CI |
 | R8 | Sous Windows, remplacer un sitemap ouvert par un autre programme (serveur web) peut échouer : ensemble mélangé | P2 | Ouvert | F | À tester ; documenter ou réessayer |
