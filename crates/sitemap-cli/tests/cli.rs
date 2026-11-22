@@ -721,6 +721,10 @@ fn execution_mode_state_token_and_apply_plan() {
     );
     assert_eq!(json(&applied)["changes"]["removed"], 1);
 
+    // explain plans for the mode asked on its command line.
+    let full = json(&run(&["explain", "--execution-mode", "full"]));
+    assert_eq!(full["execution"]["chosen"], "full");
+
     // Human output names the decision.
     let human = bin()
         .arg("explain")

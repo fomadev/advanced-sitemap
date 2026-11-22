@@ -95,6 +95,13 @@ enum Command {
         /// Number of records to sample.
         #[arg(long, default_value_t = 1000)]
         sample: usize,
+        /// Output directory whose published state is planned for (overrides
+        /// output.directory). Use the same value as for generate or apply.
+        #[arg(long, short)]
+        out: Option<PathBuf>,
+        /// Execution mode to plan for (output.publish); see generate.
+        #[arg(long, value_enum)]
+        execution_mode: Option<ExecutionMode>,
         /// Plan an `apply` of this change feed instead (JSON Lines): touched
         /// partitions, preconditions and cost against regenerating.
         #[arg(long)]
@@ -237,6 +244,14 @@ enum ExecutionMode {
     Full,
     SkipUnchanged,
     Auto,
+}
+
+fn publish_policy(mode: ExecutionMode) -> advanced_sitemap::PublishPolicy {
+    match mode {
+        ExecutionMode::Full => advanced_sitemap::PublishPolicy::All,
+        ExecutionMode::SkipUnchanged => advanced_sitemap::PublishPolicy::Changed,
+        ExecutionMode::Auto => advanced_sitemap::PublishPolicy::Auto,
+    }
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -485,11 +500,7 @@ fn main() -> ExitCode {
                 resolved.engine.publish = advanced_sitemap::PublishPolicy::Changed;
             }
             if let Some(mode) = execution_mode {
-                resolved.engine.publish = match mode {
-                    ExecutionMode::Full => advanced_sitemap::PublishPolicy::All,
-                    ExecutionMode::SkipUnchanged => advanced_sitemap::PublishPolicy::Changed,
-                    ExecutionMode::Auto => advanced_sitemap::PublishPolicy::Auto,
-                };
+                resolved.engine.publish = publish_policy(mode);
             }
             resolved.engine.expected_state = expect_state;
             let report = run_engine(resolved, RunMode::Publish)?;
@@ -505,8 +516,10 @@ fn main() -> ExitCode {
         Command::Explain {
             common,
             sample,
+            out,
+            execution_mode: _,
             changes: Some(changes),
-        } => load_config(&common, None).and_then(|resolved| {
+        } => load_config(&common, out.as_deref()).and_then(|resolved| {
             let plan = advanced_sitemap::plan::explain_apply(
                 &resolved,
                 read_feed(&changes)?,
@@ -528,8 +541,13 @@ fn main() -> ExitCode {
         Command::Explain {
             common,
             sample,
+            out,
+            execution_mode,
             changes: None,
-        } => load(&common, None).and_then(|resolved| {
+        } => load(&common, out.as_deref()).and_then(|mut resolved| {
+            if let Some(mode) = execution_mode {
+                resolved.engine.publish = publish_policy(mode);
+            }
             let plan = explain(&resolved, sample.max(1))?;
             print_plan(&plan, format);
             Ok(ExitCode::SUCCESS)
