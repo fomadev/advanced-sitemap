@@ -39,6 +39,7 @@
 //! ```
 
 mod config;
+pub mod diff;
 mod engine;
 mod hreflang;
 pub mod inspect;

@@ -373,3 +373,48 @@ fn hreflang_reciprocity_through_the_protocol() {
         .unwrap();
     assert!(report.diagnostics.is_empty(), "{:?}", report.diagnostics);
 }
+
+/// ADR-0013 prerequisite: reading a generated file and encoding its entries
+/// again gives exactly the generated `<url>` blocks, for every extension.
+#[test]
+fn reading_and_reencoding_is_exact_for_every_fixture() {
+    use advanced_sitemap::inspect::inspect_reader;
+    use advanced_sitemap::{InspectOptions, Item, xml};
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/conformance");
+    let mut checked = 0;
+    for dir in fs::read_dir(&root).unwrap() {
+        let expected = dir.unwrap().path().join("expected");
+        let Ok(files) = fs::read_dir(&expected) else {
+            continue;
+        };
+        for file in files {
+            let path = file.unwrap().path();
+            let bytes = fs::read(&path).unwrap();
+            let text = String::from_utf8(bytes.clone()).unwrap();
+            if !text.contains("<urlset") {
+                continue;
+            }
+            let mut blocks = Vec::new();
+            let report =
+                inspect_reader("fixture", &bytes[..], &InspectOptions::default(), |item| {
+                    if let Item::Url(entry) = item {
+                        xml::encode_url(&entry, &mut blocks).unwrap();
+                    }
+                })
+                .unwrap();
+            assert!(report.is_valid(), "{}", path.display());
+            let start = text.find(">\n").unwrap() + 2;
+            let start = start + text[start..].find(">\n").unwrap() + 2;
+            let end = text.rfind("</urlset>").unwrap();
+            assert_eq!(
+                String::from_utf8(blocks).unwrap(),
+                text[start..end],
+                "{}",
+                path.display()
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked >= 6, "only {checked} urlset fixtures checked");
+}

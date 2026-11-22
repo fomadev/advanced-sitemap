@@ -13,6 +13,7 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use advanced_sitemap::diff::{diff_files, sitemap_files};
 use advanced_sitemap::inspect::{FileInspection, inspect_file, inspect_reader};
 use advanced_sitemap::plan::{Plan, explain};
 use advanced_sitemap::protocol::{
@@ -31,7 +32,7 @@ const EXIT_CONFIG: u8 = 2;
 const EXIT_IO: u8 = 3;
 const EXIT_INTERNAL: u8 = 4;
 
-/// Universal sitemap engine: validate, plan, generate and inspect sitemaps.
+/// Universal sitemap engine: validate, plan, generate, inspect and compare sitemaps.
 #[derive(Parser)]
 #[command(name = "advanced-sitemap", version, about, max_term_width = 100)]
 struct Cli {
@@ -86,6 +87,25 @@ enum Command {
     },
     /// Read and check existing sitemap or sitemap index files (plain or gzip). Writes nothing.
     Inspect(InspectArgs),
+    /// Compare two sets of published sitemaps (files or directories). Writes nothing.
+    Diff(DiffArgs),
+}
+
+#[derive(Args)]
+struct DiffArgs {
+    /// Old sitemaps: a file, or a directory whose .xml and .xml.gz files are read.
+    old: PathBuf,
+    /// New sitemaps: a file or a directory.
+    new: PathBuf,
+    /// URLs listed per change kind (counts stay exact).
+    #[arg(long, default_value_t = 1000)]
+    max_listed: usize,
+    /// Maximum uncompressed bytes read per file (default: 52428800).
+    #[arg(long)]
+    max_bytes: Option<u64>,
+    /// Exit with code 1 when the two sides differ.
+    #[arg(long)]
+    fail_on_change: bool,
 }
 
 #[derive(Args)]
@@ -386,6 +406,7 @@ fn main() -> ExitCode {
             Ok(ExitCode::SUCCESS)
         }),
         Command::Inspect(args) => run_inspect(&args, format),
+        Command::Diff(args) => run_diff(&args, format),
     };
 
     match result {
@@ -481,6 +502,106 @@ fn run_inspect(args: &InspectArgs, format: Format) -> Result<ExitCode, Failure> 
         }
     }
     if !valid || (args.deny_warnings && warned) {
+        Ok(ExitCode::from(EXIT_FAILED))
+    } else {
+        Ok(ExitCode::SUCCESS)
+    }
+}
+
+fn run_diff(args: &DiffArgs, format: Format) -> Result<ExitCode, Failure> {
+    let io_failure = |e: std::io::Error| Failure {
+        code: EXIT_IO,
+        kind: "io",
+        message: e.to_string(),
+    };
+    let max_bytes = args.max_bytes.unwrap_or(limits::MAX_SITEMAP_BYTES);
+    if max_bytes == 0 {
+        return Err(config_failure("--max-bytes must be at least 1"));
+    }
+    let options = InspectOptions {
+        limits: ReaderLimits {
+            max_bytes,
+            ..ReaderLimits::default()
+        },
+        ..InspectOptions::default()
+    };
+    let old = sitemap_files(&args.old).map_err(io_failure)?;
+    let new = sitemap_files(&args.new).map_err(io_failure)?;
+    for (side, files, path) in [("old", &old, &args.old), ("new", &new, &args.new)] {
+        if files.is_empty() {
+            return Err(config_failure(format!(
+                "{side}: no .xml or .xml.gz file in {}",
+                path.display()
+            )));
+        }
+    }
+    let report = diff_files(
+        &old,
+        &new,
+        &options,
+        &std::env::temp_dir(),
+        64 << 20,
+        args.max_listed,
+    )
+    .map_err(io_failure)?;
+    let c = &report.changes;
+    let different = c.added + c.removed + c.modified > 0;
+    let valid = report.old.is_valid() && report.new.is_valid();
+    match format {
+        Format::Json => {
+            let value = serde_json::json!({
+                "schemaVersion": "1.0",
+                "engineVersion": advanced_sitemap::ENGINE_VERSION,
+                "command": "diff",
+                "status": if different { "different" } else { "identical" },
+                "old": report.old,
+                "new": report.new,
+                "changes": report.changes,
+            });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&value).unwrap_or_default()
+            );
+        }
+        Format::Human => {
+            println!("advanced-sitemap diff");
+            for (side, data) in [("Old", &report.old), ("New", &report.new)] {
+                let errors: u64 = data.files.iter().map(|f| f.severity_counts.error).sum();
+                println!(
+                    "  {side}          {} files, {} URLs, {errors} errors",
+                    data.files.len(),
+                    data.urls
+                );
+            }
+            println!(
+                "  Changes      {} added, {} removed, {} modified, {} unchanged",
+                c.added, c.removed, c.modified, c.unchanged
+            );
+            for (label, urls) in [
+                ("Added", &c.added_urls),
+                ("Removed", &c.removed_urls),
+                ("Modified", &c.modified_urls),
+            ] {
+                for url in urls.iter().take(HUMAN_DIAGNOSTIC_LIMIT) {
+                    println!("    {label:<9} {url}");
+                }
+            }
+            if c.truncated
+                || c.added + c.removed + c.modified
+                    > c.added_urls.len() as u64
+                        + c.removed_urls.len() as u64
+                        + c.modified_urls.len() as u64
+            {
+                println!("    ... complete lists in --format json (up to --max-listed)");
+            }
+            if !valid {
+                println!(
+                    "  Note         some files have errors; run `inspect` on them for details"
+                );
+            }
+        }
+    }
+    if !valid || (args.fail_on_change && different) {
         Ok(ExitCode::from(EXIT_FAILED))
     } else {
         Ok(ExitCode::SUCCESS)

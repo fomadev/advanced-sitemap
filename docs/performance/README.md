@@ -103,6 +103,14 @@ already published, and `validate` at 5 M:
   diff. Hashing costs about 6 % (ADR-0011). Not optimized yet; the option
   is off by default.
 
+## Comparing two published sets (`diff`)
+
+Two `generate` outputs of 1 M URLs (21 files and 168.6 MB each), differing
+by one `lastmod`: `diff` found exactly 1 modified URL and 999,999 unchanged.
+46.9 s on the first run (files not in the OS cache), 26.2 s on the second;
+`inspect` alone on the same two directories takes 19 to 25 s, so reading
+and validating dominate. Peak working set: 94 MiB.
+
 ## hreflang reciprocity
 
 `validate` on the 1 M URL dataset (100,000 entries with 2 alternates, so
