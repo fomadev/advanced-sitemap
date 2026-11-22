@@ -1,7 +1,9 @@
 # Revue de la Fordima Public License (FPL) v1.0 pour `advanced-sitemap`
 
-Statut : **proposition, en attente de validation par le titulaire des
-droits.** Ce document n'est pas un avis juridique. Il relève les ambiguïtés
+Statut : **décisions prises le 2026-11-22 (section 8).** La licence reste
+la FPL v1.0 sans modification ; les clarifications de la section 3 ne sont
+pas adoptées et restent une référence. Ce document n'est pas un avis
+juridique. Il relève les ambiguïtés
 du texte et propose des clarifications. Une relecture par un juriste est
 recommandée avant une version 1.1 et avant toute publication de package.
 
@@ -265,3 +267,17 @@ Shield 1.0.0 et Elastic License 2.0 sont des licences source-available
 publiées et relues par des juristes, qui visent le même objectif
 (usage libre sauf concurrence). Leur rédaction peut servir de référence
 pour formuler les définitions de la section 3.1.
+
+## 8. Décisions du titulaire (2026-11-22)
+
+| Question | Décision | Conséquence |
+|---|---|---|
+| Titulaire des droits (2.6) | **Fordima Inc.**, société constituée, à qui les droits de l'auteur ont été cédés | La mention `Copyright (c) 2026 Fordima Inc.` reste inchangée |
+| Clarifications 3.1 à 3.7 (FPL v1.1) | **Non adoptées : la v1.0 est conservée telle quelle** | Les ambiguïtés de la section 2 restent ; elles sont documentées ici. Les adaptateurs publiés par des tiers (2.2) et les forks internes (2.3) restent en zone grise |
+| Licence des contributions (2.5) | **À décider plus tard**, avant d'accepter la première contribution externe | Suivi par R26 du registre des risques ; d'ici là, le code est entièrement écrit pour Fordima |
+| Droit applicable et juridiction | **Non précisés** | Déterminés selon les règles générales en cas de litige |
+
+La licence est donc définitive pour une première distribution (R19 clos).
+Reste une obligation indépendante de la FPL : joindre aux binaires les
+notices des dépendances (section 4), suivie par R27.
+
