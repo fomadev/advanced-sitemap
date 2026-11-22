@@ -287,3 +287,45 @@ fn a_stale_snapshot_is_reported_by_the_next_run() {
             .all(|d| d.code.as_str() != "SNAPSHOT_STALE")
     );
 }
+
+/// Windows: a published file held open by another program without delete
+/// sharing (some web servers, scanners) cannot be replaced. The run fails
+/// with an I/O error after a bounded retry, `doctor` reports the mixed set,
+/// and the next run, once the file is released, repairs it.
+#[cfg(windows)]
+#[test]
+fn a_held_file_fails_the_run_and_the_next_run_repairs_the_set() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let tmp = TempDir::new("held-file");
+    let out = tmp.0.join("out");
+    let engine = Engine::new(config(None)).unwrap();
+    let versions = |v: u32| (0..200).map(|id| (id, v)).collect::<BTreeMap<_, _>>();
+    let run = |v: u32| {
+        engine.run(
+            records(input(&versions(v))),
+            &mut FsStore::new(&out),
+            RunMode::Publish,
+        )
+    };
+    run(1).unwrap();
+    let held = fs::OpenOptions::new()
+        .read(true)
+        .share_mode(1) // FILE_SHARE_READ: no delete sharing
+        .open(out.join("sitemap-4.xml"))
+        .unwrap();
+    let error = run(2).unwrap_err();
+    assert!(
+        matches!(&error, EngineError::Io(e) if e.kind() == std::io::ErrorKind::PermissionDenied),
+        "{error}"
+    );
+    assert!(error.to_string().contains("sitemap-4.xml"), "{error}");
+    let report = engine.doctor(&out);
+    assert!(
+        report.has_errors(),
+        "doctor missed the mixed set: {report:?}"
+    );
+    drop(held);
+    run(2).unwrap();
+    let report = engine.doctor(&out);
+    assert!(!report.has_errors() && !report.has_warnings(), "{report:?}");
+}
