@@ -452,6 +452,14 @@ impl Engine {
                     Err(PushError::Xml(error)) => return Err(EngineError::Xml(error)),
                 }
             }
+            // Each partition is complete: release its buffers now.
+            partitioner
+                .close_partition(partition)
+                .map_err(|e| match e {
+                    PushError::Io(error) => EngineError::Io(error),
+                    PushError::Xml(error) => EngineError::Xml(error),
+                    other => EngineError::Io(io::Error::other(other.to_string())),
+                })?;
         }
         let partitions = partitioner.finish_partial().map_err(|e| match e {
             PushError::Io(error) => EngineError::Io(error),
