@@ -207,6 +207,8 @@ diagnostic_codes! {
     HreflangTargetNotListed => "HREFLANG_TARGET_NOT_LISTED", Info;
     /// The previous snapshot cannot be read (damaged, truncated or another format); it is ignored and replaced.
     SnapshotInvalid => "SNAPSHOT_INVALID", Warning;
+    /// The previous snapshot describes another publication than the one in place (a run was interrupted after publishing): the change report compares with an older state.
+    SnapshotStale => "SNAPSHOT_STALE", Warning;
 }
 
 impl fmt::Display for DiagnosticCode {
