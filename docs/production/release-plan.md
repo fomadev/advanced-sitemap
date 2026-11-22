@@ -11,8 +11,8 @@ explicite du propriétaire du projet.
 |---|---|---|---|
 | A | Audit, P0/P1, durabilité, concurrence | Ce dossier ; verrou ; MSRV vérifiée | Fait (PR #16) |
 | B | Planner automatique, modèle de coût, `explain` lié à l'état, repli sûr ; lien snapshot ↔ publication (R5) | `--execution-mode auto`, plan avec jeton d'état | Fait (PR #17) |
-| C | Profilage, allocations, 10 M d'URL, bornes de ressources (flux `apply`) | Mesures avant/après | Fait (cette PR) |
-| D | Fuzzing (lecteur XML, protocole, snapshot, flux, URL), `cargo audit`, Actions épinglées | Cibles `cargo fuzz` et corpus | À faire |
+| C | Profilage, allocations, 10 M d'URL, bornes de ressources (flux `apply`) | Mesures avant/après | Fait (PR #18) |
+| D | Fuzzing (lecteur XML, protocole, snapshot, flux, URL), `cargo audit`, Actions épinglées | Cibles `cargo fuzz` et corpus ; `security-report.md` | Fait (cette PR) |
 | E | API Rust stable (`#[non_exhaustive]`, builders, erreurs typées), CLI (`doctor`), configuration | Politique SemVer | À faire |
 | F | Tests interplateformes (ARM), conformité, documentation, version candidate | Notes de version, artefacts, sommes de contrôle | À faire |
 
@@ -35,7 +35,7 @@ Une version n'est déclarée prête que si toutes sont vraies :
 - [ ] Tests et CI verts sur les plateformes annoncées
 - [ ] Conformité XML vérifiée par des outils indépendants (fait en CI)
 - [ ] Tests de reprise après interruption (en partie fait, lot A)
-- [ ] Fuzzing exécuté, corpus de régression conservé
+- [x] Fuzzing exécuté, corpus de régression conservé (lot D)
 - [ ] Performance mesurée sur les volumes annoncés
 - [ ] Documentation cohérente avec le code
 - [ ] Licence finalisée

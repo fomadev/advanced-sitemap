@@ -4,7 +4,7 @@ Priorités : **P0** perte ou corruption de données, faille critique,
 publication incorrecte ; **P1** bloque une utilisation en production ;
 **P2** limitation importante mais contournable ; **P3** amélioration.
 
-État au 2026-11-22, après le lot C.
+État au 2026-11-22, après le lot D.
 
 | ID | Risque | Priorité | État | Lot | Notes |
 |---|---|---|---|---|---|
@@ -17,9 +17,10 @@ publication incorrecte ; **P1** bloque une utilisation en production ;
 | R7 | MSRV déclarée fausse et non vérifiée | P2 | **Corrigé** | A | 1.89, job CI |
 | R8 | Sous Windows, remplacer un sitemap ouvert par un autre programme (serveur web) peut échouer : ensemble mélangé | P2 | Ouvert | F | À tester ; documenter ou réessayer |
 | R9 | Le flux de `apply` est tenu en mémoire (une entrée par URL changée) | P2 | **Corrigé** | C | 806 octets par URL mesurés ; borne `state.maxFeedOperations` (500 000 par défaut), refus avant écriture |
-| R10 | Aucun fuzzing (lecteur XML, protocole, décodeur de snapshot, flux) | P1 pour une release stable | Ouvert | D | Tests adversariaux ciblés existants (XXE, DOCTYPE, bombes gzip, profondeur) |
-| R11 | `cargo audit` non exécuté localement | P3 | Ouvert | D | `cargo deny` couvre les avis en CI |
-| R12 | Actions GitHub épinglées par étiquette (`@v4`), pas par empreinte | P3 | Ouvert | D | `permissions: contents: read` déjà en place |
+| R10 | Aucun fuzzing (lecteur XML, protocole, décodeur de snapshot, flux) | P1 pour une release stable | **Corrigé** | D | Fuzzing stable reproductible à chaque PR, `cargo fuzz` hebdomadaire ; un défaut trouvé et corrigé (R25) |
+| R25 | Caractère interdit par XML dans un texte news ou vidéo : validé puis refusé par l'écrivain, arrêt sur erreur interne | P1 | **Corrigé** | D | Trouvé par fuzzing ; règle partagée validation/écrivain |
+| R11 | `cargo audit` non exécuté localement | P3 | **Clos** | D | `cargo deny check advisories` utilise la même base RustSec à chaque PR |
+| R12 | Actions GitHub épinglées par étiquette (`@v4`), pas par empreinte | P3 | **Corrigé** | D | Empreintes de commit, Dependabot |
 | R13 | Le planner ne choisit pas automatiquement le mode d'exécution | P2 | **Corrigé** | B | `--execution-mode auto` ; `explain --changes` recommande `apply` ou une régénération ; pas de repli automatique qui ignorerait le flux |
 | R14 | Plan d'`explain` non lié à une version de l'état | P2 | **Corrigé** | B | Jeton d'état et `--expect-state`, vérifiés sous verrou |
 | R22 | `explain` sans `--out` regardait un autre dossier que `generate` et `apply` | P2 | **Corrigé** | B | |

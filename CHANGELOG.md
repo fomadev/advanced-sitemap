@@ -8,6 +8,12 @@ contain breaking changes.
 
 ### Added
 
+- Lot D (security): reproducible fuzzing on stable Rust (`tests/fuzz.rs`,
+  snapshot decoder) run with the tests and longer in CI, coverage-guided
+  `cargo fuzz` targets with seed corpora (`fuzz/`, weekly workflow),
+  GitHub Actions pinned by commit hash, Dependabot. Security report in
+  `docs/production/security-report.md`.
+
 - Lot C (performance): `state.maxFeedOperations` / `apply --max-operations`
   bound the change feed held in memory (default 500,000 changed URLs,
   about 400 MB); a larger feed is refused before writing. Resource limits
@@ -28,6 +34,10 @@ contain breaking changes.
 
 ### Fixed
 
+- A control character forbidden by XML in a news or video text passed
+  validation, then stopped the run with an internal error in the XML
+  writer. It is now a diagnostic (`NEWS_TEXT_INVALID`,
+  `VIDEO_TEXT_INVALID`, `VIDEO_UPLOADER_INVALID`). Found by fuzzing.
 - A run interrupted after publishing, before the snapshot was replaced,
   is detected: snapshot format v2 records the manifest digest of the
   publication it describes; `SNAPSHOT_STALE` warns and `apply` refuses.
