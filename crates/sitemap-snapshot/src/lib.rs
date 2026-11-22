@@ -87,6 +87,8 @@ pub fn to_hex(digest: &Digest) -> String {
 }
 
 const MAGIC: &[u8; 8] = b"ASNAPv1\n";
+/// Bytes hashed and written, or read, per call.
+const CHUNK: usize = 64 * 1024;
 /// Largest `loc` length the format can store, in bytes.
 pub const MAX_LOC_BYTES: usize = u16::MAX as usize - 1;
 /// `shared` value that marks the end of the records.
@@ -214,7 +216,7 @@ impl<W: Write> SnapshotWriter<W> {
             count: 0,
             last: None,
             codec: Codec::default(),
-            bytes: Vec::with_capacity(256),
+            bytes: Vec::with_capacity(CHUNK + 1024),
         })
     }
 
@@ -222,16 +224,26 @@ impl<W: Write> SnapshotWriter<W> {
         if self.last.as_ref().is_some_and(|last| *last > record) {
             return Err(io::Error::other("snapshot records are not sorted"));
         }
-        self.bytes.clear();
         self.codec.write(&mut self.bytes, &record)?;
-        self.out.write_all(&self.bytes)?;
-        self.hasher.update(&self.bytes);
+        if self.bytes.len() >= CHUNK {
+            self.flush_chunk()?;
+        }
         self.count += 1;
         self.last = Some(record);
         Ok(())
     }
 
+    /// Hashes and writes the pending bytes in one call each: hashing record
+    /// by record costs more than the hashing itself.
+    fn flush_chunk(&mut self) -> io::Result<()> {
+        self.out.write_all(&self.bytes)?;
+        self.hasher.update(&self.bytes);
+        self.bytes.clear();
+        Ok(())
+    }
+
     fn finish(mut self) -> io::Result<(W, u64)> {
+        self.flush_chunk()?;
         let mut tail = Vec::with_capacity(10);
         Codec::write_end(&mut tail)?;
         tail.extend_from_slice(&self.count.to_le_bytes());
@@ -386,16 +398,61 @@ pub fn write_file(builder: SnapshotBuilder, config: &Digest, path: &Path) -> io:
 // ---------------------------------------------------------------------------
 // Reading
 
-/// Hashes everything read through it.
+/// Buffers its input and hashes every byte handed out, a whole buffer at a
+/// time rather than record by record.
 struct HashingReader<R> {
     inner: R,
+    buffer: Box<[u8]>,
+    /// Next byte to hand out.
+    pos: usize,
+    /// End of the valid bytes.
+    len: usize,
+    /// Bytes before this position are hashed.
+    hashed: usize,
     hasher: blake3::Hasher,
 }
 
+impl<R: Read> HashingReader<R> {
+    fn new(inner: R) -> Self {
+        Self {
+            inner,
+            buffer: vec![0; CHUNK].into_boxed_slice(),
+            pos: 0,
+            len: 0,
+            hashed: 0,
+            hasher: blake3::Hasher::new(),
+        }
+    }
+
+    /// Hashes the bytes handed out since the last call.
+    fn hash_consumed(&mut self) {
+        self.hasher.update(&self.buffer[self.hashed..self.pos]);
+        self.hashed = self.pos;
+    }
+
+    /// Digest of every byte handed out so far.
+    fn digest(&mut self) -> blake3::Hash {
+        self.hash_consumed();
+        self.hasher.finalize()
+    }
+}
+
 impl<R: Read> Read for HashingReader<R> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let n = self.inner.read(buf)?;
-        self.hasher.update(&buf[..n]);
+    fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
+        if self.pos == self.len {
+            self.hash_consumed();
+            self.len = loop {
+                match self.inner.read(&mut self.buffer) {
+                    Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+                    other => break other?,
+                }
+            };
+            self.pos = 0;
+            self.hashed = 0;
+        }
+        let n = out.len().min(self.len - self.pos);
+        out[..n].copy_from_slice(&self.buffer[self.pos..self.pos + n]);
+        self.pos += n;
         Ok(n)
     }
 }
@@ -409,17 +466,16 @@ pub struct SnapshotReader<R: Read> {
     codec: Codec,
     config: Digest,
     count: u64,
-    last: Option<Record>,
+    /// The previous record, to check the order without cloning it.
+    last_loc: String,
+    last_rest: Option<(Digest, u32)>,
     done: bool,
 }
 
 impl<R: Read> SnapshotReader<R> {
     /// Reads and checks the header.
     pub fn new(inner: R) -> io::Result<Self> {
-        let mut input = HashingReader {
-            inner,
-            hasher: blake3::Hasher::new(),
-        };
+        let mut input = HashingReader::new(inner);
         let mut magic = [0u8; 8];
         input
             .read_exact(&mut magic)
@@ -434,7 +490,8 @@ impl<R: Read> SnapshotReader<R> {
             codec: Codec::default(),
             config,
             count: 0,
-            last: None,
+            last_loc: String::new(),
+            last_rest: None,
             done: false,
         })
     }
@@ -457,23 +514,26 @@ impl<R: Read> SnapshotReader<R> {
         };
         match self.codec.read(&mut self.input).map_err(truncated)? {
             Some(record) => {
-                if self.last.as_ref().is_some_and(|last| *last > record) {
-                    return Err(invalid("snapshot records are not sorted"));
+                if let Some((content, partition)) = self.last_rest {
+                    let last = (self.last_loc.as_str(), content, partition);
+                    if last > (record.loc.as_str(), record.content, record.partition) {
+                        return Err(invalid("snapshot records are not sorted"));
+                    }
                 }
                 self.count += 1;
-                self.last = Some(record.clone());
+                self.last_loc.clone_from(&record.loc);
+                self.last_rest = Some((record.content, record.partition));
                 Ok(Some(record))
             }
             None => {
                 self.done = true;
                 let mut count = [0u8; 8];
                 self.input.read_exact(&mut count).map_err(truncated)?;
-                let expected = self.input.hasher.finalize();
+                // The checksum covers everything before it. The checksum
+                // bytes are hashed too once read, but no longer matter.
+                let expected = self.input.digest();
                 let mut checksum = [0u8; 32];
-                self.input
-                    .inner
-                    .read_exact(&mut checksum)
-                    .map_err(truncated)?;
+                self.input.read_exact(&mut checksum).map_err(truncated)?;
                 if u64::from_le_bytes(count) != self.count {
                     return Err(invalid("snapshot record count does not match"));
                 }
