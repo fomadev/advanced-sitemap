@@ -20,10 +20,10 @@ fuzzé (R10), et l'API Rust n'est pas stabilisée (R17).
 | robots.txt (`sitemap-robots`) | READY | RFC 9309, sortie déterministe, 5 tests | Peu de tests (5) |
 | Lecteur sécurisé (`sitemap-reader`, `inspect`) | NEEDS HARDENING | DOCTYPE refusé, bornes de taille décompressée, profondeur, texte ; 23 tests adversariaux | Fuzzing (R10) ; pas de lecture distante (choix) |
 | Protocole JSON (`sitemap-protocol`) | NEEDS HARDENING | Versions 1.0/1.1, schémas JSON, champs inconnus refusés | Fuzzing ; politique de dépréciation à écrire (E) |
-| Snapshot et `diff` (`sitemap-snapshot`) | NEEDS HARDENING | Format v1 avec somme BLAKE3 ; tri externe borné ; vecteurs figés ; détection des corruptions | ADR-0011 à approuver (R18) ; fuzzing du décodeur ; lien snapshot ↔ publication (R5) |
+| Snapshot et `diff` (`sitemap-snapshot`) | NEEDS HARDENING | Format v2 relié à la publication (v1 toujours lu) ; somme BLAKE3 ; tri externe borné ; vecteurs figés ; détection des corruptions et des snapshots périmés | ADR-0011 à approuver (R18) ; fuzzing du décodeur |
 | `consistent-hash` et coût de migration | EXPERIMENTAL | Implémenté, mesuré (4,0 % d'URL déplacées de 24 à 25 partitions) ; prédiction égale au résultat | ADR-0012 à approuver |
 | Mode delta (`apply`) | EXPERIMENTAL | Oracle I1 aléatoire et vérification à 1 M d'URL ; refus avant écriture ; verrou (lot A) | ADR-0013 à approuver ; flux en mémoire (R9) ; R5 |
-| Planner / `explain` | NEEDS HARDENING | Estimations marquées mesurées/estimées ; coût de migration exact | Choix automatique du mode (R13), plan lié à l'état (R14) |
+| Planner / `explain` | NEEDS HARDENING | Mode `auto`, plan d'exécution avec préconditions et coûts, `explain --changes`, jeton d'état vérifié sous verrou ; estimations comparées aux mesures (décisions justes dans tous les cas mesurés) | Calibration sur une seule machine (R23) ; réserves en octets et en news |
 | CLI (`sitemap-cli`) | READY | 14 tests de bout en bout ; JSON et humain ; codes 0 à 4 documentés | `doctor` à évaluer (E) |
 | API Rust publique | EXPERIMENTAL | Utilisable et documentée (`cargo doc` sans avertissement) | Stabilisation, `#[non_exhaustive]`, erreurs typées complètes (R17) |
 | Bindings (Node, Python, PHP) | BLOCKED | Non commencés, hors périmètre de la version stable du cœur | Stabilisation du protocole et de l'API |

@@ -152,6 +152,7 @@ pub fn resolve_config(doc: ConfigDocument, base_dir: &Path) -> Result<ResolvedCo
         publish: match doc.output.publish {
             PublishSetting::All => PublishPolicy::All,
             PublishSetting::Changed => PublishPolicy::Changed,
+            PublishSetting::Auto => PublishPolicy::Auto,
         },
         max_diagnostics: doc.validation.max_diagnostics as usize,
         strategy,
@@ -188,6 +189,7 @@ pub fn resolve_config(doc: ConfigDocument, base_dir: &Path) -> Result<ResolvedCo
             }
             settings
         }),
+        expected_state: None,
     };
 
     Ok(ResolvedConfig {

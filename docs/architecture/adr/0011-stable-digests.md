@@ -66,3 +66,14 @@ l'encodage XML tourne à environ 270 Mo/s mesurés (1,57 M URL/s × environ
   vide, et une URL de référence, testés sur les trois OS par la CI.
 
 Les deux conditions sont remplies ; la décision finale reste au mainteneur.
+
+## Mise à jour du 2026-11-22 : format v2 et empreintes de fichiers
+
+- Le snapshot passe au format v2 (`ASNAPv2`) : l'en-tête ajoute 16 octets,
+  l'empreinte du manifest de la publication décrite. Le format v1 reste
+  lu (fixture figée). Un moteur plus ancien traite un v2 comme invalide et
+  le remplace, au prix d'une génération complète.
+- Chaque fichier publié est haché pendant son écriture (même fonction,
+  BLAKE3 tronqué à 128 bits) ; le manifest liste ces empreintes. Coût non
+  mesurable sur une relance de 1 M d'URL (médiane identique avant et
+  après).

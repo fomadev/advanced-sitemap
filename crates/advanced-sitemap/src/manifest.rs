@@ -34,6 +34,11 @@ pub struct ManifestArtifact {
     pub entries: Option<u64>,
     /// Size in bytes.
     pub bytes: u64,
+    /// BLAKE3-128 digest of the file's bytes, in hexadecimal. It makes the
+    /// manifest describe the content of the publication, not only its
+    /// shape; absent in manifests written before it existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
 }
 
 impl Manifest {
@@ -56,6 +61,7 @@ impl Manifest {
                     .to_owned(),
                     entries: a.entries,
                     bytes: a.bytes,
+                    digest: a.digest.clone(),
                 })
                 .collect(),
         }

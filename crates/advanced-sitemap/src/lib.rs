@@ -57,7 +57,8 @@ pub use engine::{
 };
 pub use manifest::{Manifest, ManifestArtifact};
 pub use report::{
-    ArtifactKind, ArtifactReport, ChangesReport, GenerationReport, RunStatus, SeverityCounts, Stats,
+    ArtifactKind, ArtifactReport, ChangesReport, ExecutionDecision, GenerationReport, RunStatus,
+    SeverityCounts, Stats,
 };
 pub use sitemap::{Sitemap, SitemapBuilder, SitemapError};
 
@@ -74,6 +75,7 @@ pub use sitemap_reader::{
     self as reader, DocumentKind, InspectOptions, InspectReport, Item, ReaderLimits,
 };
 pub use sitemap_robots::{RobotsConfig, RobotsGroup, RobotsTxt};
+pub use sitemap_snapshot::{digest128, to_hex};
 pub use sitemap_storage::{
     ArtifactName, ArtifactStore, ArtifactWriter, DirectoryLock, FsStore, LOCK_FILE, MemoryStore,
     NullStore, Publication, StoreDescription,

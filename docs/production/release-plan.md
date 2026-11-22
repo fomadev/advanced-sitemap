@@ -9,8 +9,8 @@ explicite du propriétaire du projet.
 
 | Lot | Contenu | Sortie attendue | État |
 |---|---|---|---|
-| A | Audit, P0/P1, durabilité, concurrence | Ce dossier ; verrou ; MSRV vérifiée | En cours (cette PR) |
-| B | Planner automatique, modèle de coût, `explain` lié à l'état, repli sûr ; lien snapshot ↔ publication (R5) | `--execution-mode auto` (nom à valider), plan versionné | À faire |
+| A | Audit, P0/P1, durabilité, concurrence | Ce dossier ; verrou ; MSRV vérifiée | Fait (PR #16) |
+| B | Planner automatique, modèle de coût, `explain` lié à l'état, repli sûr ; lien snapshot ↔ publication (R5) | `--execution-mode auto`, plan avec jeton d'état | Fait (cette PR) |
 | C | Profilage, allocations, 10 M d'URL, bornes de ressources (flux `apply`) | Mesures avant/après | À faire |
 | D | Fuzzing (lecteur XML, protocole, snapshot, flux, URL), `cargo audit`, Actions épinglées | Cibles `cargo fuzz` et corpus | À faire |
 | E | API Rust stable (`#[non_exhaustive]`, builders, erreurs typées), CLI (`doctor`), configuration | Politique SemVer | À faire |

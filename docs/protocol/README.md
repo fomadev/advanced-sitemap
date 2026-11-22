@@ -46,7 +46,7 @@ JSON Schemas (draft 2020-12) are in [`schemas/`](../../schemas).
 | `output.fileStem` | `sitemap` | `[A-Za-z0-9_-]`, 1 to 64 characters |
 | `output.index` | `auto` | `auto`, `always` or `never` |
 | `output.manifest` | `true` | Write `<stem>.manifest.json` |
-| `output.publish` | `all` | Since 1.1. `changed`: files whose bytes equal the published file are not rewritten (same result, less disk I/O). The report marks them `"unchanged": true` |
+| `output.publish` | `all` | Since 1.1. `changed`: files whose bytes equal the published file are not rewritten (same result, less disk I/O). The report marks them `"unchanged": true`. `auto`: `changed` once a publication exists, `all` before; the report's `execution` says which and why |
 | `output.extensions` | `[]` | Since 1.1. Extra namespaces declared on every file: `video`, `news`. `xhtml` and `image` are always declared. A record using an undeclared extension gets `EXTENSION_NOT_DECLARED` |
 | `source` / `urls` | none | A file, or inline records. The two are mutually exclusive |
 | `robots` | none | Since 1.1. Publishes `robots.txt` next to the sitemaps (see below) |
@@ -231,6 +231,20 @@ Both place a URL from `fnv1a64(loc)` alone, so a URL keeps its file while
 Both functions are frozen by test vectors. Switching from one strategy to
 the other moves almost every URL once. Every existing file still changes
 when N grows, because each one gives some URLs to the new partition.
+
+## Manifest digests and snapshot version (since 1.1)
+
+- Each manifest entry has `digest`, the BLAKE3-128 digest (hex) of the
+  file's bytes, so the manifest describes the content of the publication
+  and can be used to check a deployment. Reports carry the same `digest`
+  per artifact. Manifests written before 1.1 have no digests; they are
+  still read.
+- The URL snapshot is format version 2 (`ASNAPv2`): its header records the
+  digest of the manifest of the publication it describes. A run
+  interrupted after publishing, before the snapshot was replaced, is then
+  detected: the next change report warns with `SNAPSHOT_STALE`, and
+  `apply` refuses before reading any file. Version 1 snapshots are still
+  read (without this check).
 
 ## Change feeds (since 1.1)
 

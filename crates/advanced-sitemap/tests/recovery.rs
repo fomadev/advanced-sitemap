@@ -188,7 +188,9 @@ fn a_snapshot_older_than_the_published_files_makes_apply_refuse() {
     );
     match result {
         Err(EngineError::DeltaRefused(reason)) => {
-            assert!(reason.contains("changed outside the engine"), "{reason}");
+            // Caught before any file is read: the snapshot records the
+            // manifest of the publication it describes.
+            assert!(reason.contains("another publication"), "{reason}");
         }
         other => panic!("expected a refusal, got {other:?}"),
     }
@@ -207,4 +209,82 @@ fn an_unusable_output_directory_fails_without_publishing() {
         other => panic!("expected an I/O error, got {other:?}"),
     }
     assert_eq!(fs::read(&out).unwrap(), b"not a directory");
+}
+
+#[test]
+fn the_manifest_lists_the_digest_of_every_published_file() {
+    let tmp = TempDir::new("digests");
+    let out = tmp.0.join("out");
+    let versions: BTreeMap<u32, u32> = (0..90).map(|i| (i, 0)).collect();
+    let report = Engine::new(config(None))
+        .unwrap()
+        .run(
+            records(input(&versions)),
+            &mut FsStore::new(&out),
+            RunMode::Publish,
+        )
+        .unwrap();
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(out.join("sitemap.manifest.json")).unwrap()).unwrap();
+    let artifacts = manifest["artifacts"].as_array().unwrap();
+    assert_eq!(artifacts.len(), 5); // 4 partitions and the index
+    for artifact in artifacts {
+        let name = artifact["name"].as_str().unwrap();
+        // Recomputed from the file, independently of the streaming hash.
+        let expected = advanced_sitemap::to_hex(&advanced_sitemap::digest128(
+            &fs::read(out.join(name)).unwrap(),
+        ));
+        assert_eq!(artifact["digest"], expected.as_str(), "{name}");
+    }
+    for artifact in &report.artifacts {
+        let expected = advanced_sitemap::to_hex(&advanced_sitemap::digest128(
+            &fs::read(out.join(&artifact.name)).unwrap(),
+        ));
+        assert_eq!(
+            artifact.digest.as_deref(),
+            Some(expected.as_str()),
+            "{}",
+            artifact.name
+        );
+    }
+}
+
+/// A run interrupted after publishing, before the snapshot is replaced,
+/// leaves a snapshot that describes another publication: the next change
+/// report says so.
+#[test]
+fn a_stale_snapshot_is_reported_by_the_next_run() {
+    let tmp = TempDir::new("stale-report");
+    let (out, state) = (tmp.0.join("out"), tmp.0.join("state"));
+    let versions: BTreeMap<u32, u32> = (0..40).map(|i| (i, 0)).collect();
+    generate(&config(Some(&state)), &out, &versions).unwrap();
+    let snapshot = fs::read(state.join("sitemap.snapshot")).unwrap();
+    let changed: BTreeMap<u32, u32> = (0..40).map(|i| (i, 2)).collect();
+    generate(&config(Some(&state)), &out, &changed).unwrap();
+    fs::write(state.join("sitemap.snapshot"), snapshot).unwrap();
+
+    let report = Engine::new(config(Some(&state)))
+        .unwrap()
+        .run(
+            records(input(&changed)),
+            &mut FsStore::new(&out),
+            RunMode::Publish,
+        )
+        .unwrap();
+    let codes: Vec<&str> = report.diagnostics.iter().map(|d| d.code.as_str()).collect();
+    assert!(codes.contains(&"SNAPSHOT_STALE"), "{codes:?}");
+    // The run replaced the snapshot: the next one is clean.
+    let next = Engine::new(config(Some(&state)))
+        .unwrap()
+        .run(
+            records(input(&changed)),
+            &mut FsStore::new(&out),
+            RunMode::Publish,
+        )
+        .unwrap();
+    assert!(
+        next.diagnostics
+            .iter()
+            .all(|d| d.code.as_str() != "SNAPSHOT_STALE")
+    );
 }

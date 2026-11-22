@@ -51,6 +51,9 @@ Command-line options override the configuration document.
 | `--file-stem NAME` | `output.fileStem` |
 | `--no-manifest` (`generate` only) | `output.manifest = false` |
 | `--skip-unchanged` (`generate` only) | `output.publish = "changed"` |
+| `--execution-mode full\|skip-unchanged\|auto` (`generate`, `explain`) | `output.publish = "all"`, `"changed"` or `"auto"` |
+| `--expect-state TOKEN` (`generate`, `apply`) | Refuse to run if the published state is not the one `explain` planned for |
+| `--out DIR` (`explain`) | Output directory whose published state is planned for; use the same as for `generate` or `apply` |
 | `--deny-warnings` (`generate`, `validate`, `inspect`) | exit 1 if any warning or error is reported |
 | `--sample N` (`explain` only) | number of records sampled, default 1000 |
 
@@ -112,6 +115,47 @@ is not compared. Sitemap index files are read but contribute no URL.
 Exit code 1 also when a file of either side has errors (run `inspect` on it).
 Memory is bounded: both sides are sorted with the snapshot's external sort
 in the system temporary directory.
+
+## Execution plan in `explain`
+
+`explain` says which execution mode a run would use, every mode it
+considered and why, with estimated costs, and a state token:
+
+```json
+"execution": {
+  "requested": "auto",
+  "chosen": "skip-unchanged",
+  "reason": "auto: a previous publication exists; same result as `full`, without rewriting unchanged files",
+  "candidates": [
+    {"mode": "full", "eligible": true, "millisecondsMin": {"kind": "estimated", "value": 19706}, "...": "..."},
+    {"mode": "skip-unchanged", "eligible": true, "...": "..."},
+    {"mode": "delta", "eligible": false, "reasons": ["needs a change feed: run `explain --changes FEED` to plan an `apply`"]}
+  ],
+  "stateToken": "3f0c9a...",
+  "costModel": "reference laptop, 2026-11 (docs/performance)"
+}
+```
+
+- Each candidate lists its preconditions (or why it is not eligible), and
+  estimated time (`millisecondsMin` and `millisecondsMax`), bytes read and
+  written, memory and partitions affected. Every number says whether it
+  is measured or estimated. A mode is never chosen unless its
+  preconditions hold; costs only order the eligible modes.
+- `explain --changes FEED` plans an `apply`: it validates the feed, finds
+  the partitions it touches, checks every precondition of the delta mode
+  without writing, and compares the cost with regenerating from the
+  source (`generate --execution-mode auto`). The source must already
+  contain the feed's changes for that to be equivalent; the planner
+  cannot check it, and it never turns a feed into a full source. When
+  `apply` cannot run, it says why and recommends regenerating (or
+  `none` without a source).
+- **State token.** Pass `stateToken` to the run with `--expect-state`: it
+  refuses to start (exit code 2, `"kind": "state-changed"`) if the
+  settings, the published manifest or the snapshot changed since
+  `explain`. The check is made with the run's lock held.
+- Estimates come from a cost model calibrated on the reference machine of
+  [docs/performance](../performance/README.md#execution-planner-estimates);
+  on other hardware only the comparison between modes is meaningful.
 
 ## Migration cost in `explain`
 
@@ -196,7 +240,7 @@ process exits, even after a crash.
 |---|---|
 | 0 | Success. With `onInvalid = skip`, success can include reported errors for excluded records |
 | 1 | Generation failed or the input is invalid (or warnings with `--deny-warnings`) |
-| 2 | Usage or configuration error (bad flag, invalid or unsupported document), or a refused `apply` |
+| 2 | Usage or configuration error (bad flag, invalid or unsupported document), a refused `apply`, or a state that changed since `explain` (`--expect-state`) |
 | 3 | I/O error (missing input, unwritable output), or the output or state directory is locked by another run (`"kind": "busy"`) |
 | 4 | Internal error |
 

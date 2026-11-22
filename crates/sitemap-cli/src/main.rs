@@ -64,9 +64,18 @@ enum Command {
         /// Do not write the manifest file.
         #[arg(long)]
         no_manifest: bool,
-        /// Only republish files whose bytes changed (output.publish = "changed").
-        #[arg(long)]
+        /// Only republish files whose bytes changed (same as --execution-mode skip-unchanged).
+        #[arg(long, conflicts_with = "execution_mode")]
         skip_unchanged: bool,
+        /// full: write every file; skip-unchanged: write only files whose
+        /// bytes changed; auto: skip-unchanged once something is published
+        /// (output.publish).
+        #[arg(long, value_enum)]
+        execution_mode: Option<ExecutionMode>,
+        /// Refuse to run if the published state differs from this token
+        /// (stateToken from explain).
+        #[arg(long)]
+        expect_state: Option<String>,
         /// Exit with code 1 when warnings are reported.
         #[arg(long)]
         deny_warnings: bool,
@@ -86,6 +95,17 @@ enum Command {
         /// Number of records to sample.
         #[arg(long, default_value_t = 1000)]
         sample: usize,
+        /// Output directory whose published state is planned for (overrides
+        /// output.directory). Use the same value as for generate or apply.
+        #[arg(long, short)]
+        out: Option<PathBuf>,
+        /// Execution mode to plan for (output.publish); see generate.
+        #[arg(long, value_enum)]
+        execution_mode: Option<ExecutionMode>,
+        /// Plan an `apply` of this change feed instead (JSON Lines): touched
+        /// partitions, preconditions and cost against regenerating.
+        #[arg(long)]
+        changes: Option<PathBuf>,
     },
     /// Apply a change feed (JSON Lines of upsert and delete operations) to the
     /// published sitemaps, rewriting only the partitions it touches. Needs a
@@ -102,6 +122,10 @@ enum Command {
         /// Check and report without publishing anything.
         #[arg(long)]
         dry_run: bool,
+        /// Refuse to run if the published state differs from this token
+        /// (stateToken from explain --changes).
+        #[arg(long)]
+        expect_state: Option<String>,
         /// Exit with code 1 when warnings are reported.
         #[arg(long)]
         deny_warnings: bool,
@@ -216,6 +240,21 @@ enum OnInvalid {
 }
 
 #[derive(Clone, Copy, ValueEnum)]
+enum ExecutionMode {
+    Full,
+    SkipUnchanged,
+    Auto,
+}
+
+fn publish_policy(mode: ExecutionMode) -> advanced_sitemap::PublishPolicy {
+    match mode {
+        ExecutionMode::Full => advanced_sitemap::PublishPolicy::All,
+        ExecutionMode::SkipUnchanged => advanced_sitemap::PublishPolicy::Changed,
+        ExecutionMode::Auto => advanced_sitemap::PublishPolicy::Auto,
+    }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
 enum Strategy {
     Sequential,
     StableHash,
@@ -243,6 +282,7 @@ impl From<EngineError> for Failure {
             EngineError::Xml(_) => (EXIT_INTERNAL, "internal"),
             EngineError::DeltaRefused(_) => (EXIT_CONFIG, "delta-refused"),
             EngineError::Busy(_) => (EXIT_IO, "busy"),
+            EngineError::StateChanged { .. } => (EXIT_CONFIG, "state-changed"),
         };
         Failure {
             code,
@@ -386,12 +426,16 @@ fn load_config(common: &CommonArgs, out: Option<&Path>) -> Result<ResolvedConfig
     Ok(resolve_config(doc, &base_dir)?)
 }
 
-fn run_apply(
-    resolved: &ResolvedConfig,
+/// Opens a change feed (a file, or `-` for standard input).
+fn read_feed(
     changes: &Path,
-    mode: RunMode,
-) -> Result<GenerationReport, Failure> {
-    let engine = Engine::new(resolved.engine.clone())?;
+) -> Result<
+    advanced_sitemap::protocol::JsonlReader<
+        Box<dyn std::io::BufRead>,
+        advanced_sitemap::protocol::ChangeRecord,
+    >,
+    Failure,
+> {
     let reader: Box<dyn std::io::BufRead> = if changes == Path::new("-") {
         Box::new(std::io::stdin().lock())
     } else {
@@ -402,10 +446,19 @@ fn run_apply(
         })?;
         Box::new(std::io::BufReader::new(file))
     };
-    let feed = advanced_sitemap::protocol::JsonlReader::<_, advanced_sitemap::protocol::ChangeRecord>::typed(
+    Ok(advanced_sitemap::protocol::JsonlReader::typed(
         reader,
         advanced_sitemap::protocol::DEFAULT_MAX_LINE_BYTES,
-    );
+    ))
+}
+
+fn run_apply(
+    resolved: &ResolvedConfig,
+    changes: &Path,
+    mode: RunMode,
+) -> Result<GenerationReport, Failure> {
+    let engine = Engine::new(resolved.engine.clone())?;
+    let feed = read_feed(changes)?;
     let mut store = FsStore::new(&resolved.output_dir);
     Ok(engine.apply_changes(feed, &mut store, mode)?)
 }
@@ -436,6 +489,8 @@ fn main() -> ExitCode {
             out,
             no_manifest,
             skip_unchanged,
+            execution_mode,
+            expect_state,
             deny_warnings,
         } => load(&common, out.as_deref()).and_then(|mut resolved| {
             if no_manifest {
@@ -444,6 +499,10 @@ fn main() -> ExitCode {
             if skip_unchanged {
                 resolved.engine.publish = advanced_sitemap::PublishPolicy::Changed;
             }
+            if let Some(mode) = execution_mode {
+                resolved.engine.publish = publish_policy(mode);
+            }
+            resolved.engine.expected_state = expect_state;
             let report = run_engine(resolved, RunMode::Publish)?;
             Ok(finish_report("generate", &report, format, deny_warnings))
         }),
@@ -454,7 +513,41 @@ fn main() -> ExitCode {
             let report = run_engine(resolved, RunMode::DryRun)?;
             Ok(finish_report("validate", &report, format, deny_warnings))
         }),
-        Command::Explain { common, sample } => load(&common, None).and_then(|resolved| {
+        Command::Explain {
+            common,
+            sample,
+            out,
+            execution_mode: _,
+            changes: Some(changes),
+        } => load_config(&common, out.as_deref()).and_then(|resolved| {
+            let plan = advanced_sitemap::plan::explain_apply(
+                &resolved,
+                read_feed(&changes)?,
+                &advanced_sitemap::plan::CostModel::REFERENCE,
+            )?;
+            let _ = sample;
+            match format {
+                Format::Json => println!(
+                    "{}",
+                    serde_json::to_string_pretty(&plan).unwrap_or_default()
+                ),
+                Format::Human => {
+                    println!("advanced-sitemap explain --changes (nothing is written)");
+                    print_execution(&plan);
+                }
+            }
+            Ok(ExitCode::SUCCESS)
+        }),
+        Command::Explain {
+            common,
+            sample,
+            out,
+            execution_mode,
+            changes: None,
+        } => load(&common, out.as_deref()).and_then(|mut resolved| {
+            if let Some(mode) = execution_mode {
+                resolved.engine.publish = publish_policy(mode);
+            }
             let plan = explain(&resolved, sample.max(1))?;
             print_plan(&plan, format);
             Ok(ExitCode::SUCCESS)
@@ -464,8 +557,10 @@ fn main() -> ExitCode {
             changes,
             out,
             dry_run,
+            expect_state,
             deny_warnings,
-        } => load_config(&common, out.as_deref()).and_then(|resolved| {
+        } => load_config(&common, out.as_deref()).and_then(|mut resolved| {
+            resolved.engine.expected_state = expect_state;
             let mode = if dry_run {
                 RunMode::DryRun
             } else {
@@ -876,7 +971,35 @@ fn print_plan(plan: &Plan, format: Format) {
     }
     println!("  Output layout      {}", plan.output_layout);
     println!("  Output directory   {}", plan.output_directory);
+    print_execution(&plan.execution);
     for note in &plan.notes {
         println!("  Note               {note}");
     }
+}
+
+fn print_execution(plan: &advanced_sitemap::plan::ExecutionPlan) {
+    println!(
+        "  Execution          {} (requested {}): {}",
+        plan.chosen, plan.requested, plan.reason
+    );
+    for c in &plan.candidates {
+        if c.eligible {
+            let time = match (c.milliseconds_min.value(), c.milliseconds_max.value()) {
+                (Some(a), Some(b)) if a == b => format!("~{:.1} s", a as f64 / 1000.0),
+                (Some(a), Some(b)) => {
+                    format!("~{:.1} to {:.1} s", a as f64 / 1000.0, b as f64 / 1000.0)
+                }
+                _ => "unknown".to_owned(),
+            };
+            println!("    {:<16} eligible, {time} (estimated)", c.mode);
+        } else {
+            println!(
+                "    {:<16} not eligible: {}",
+                c.mode,
+                c.reasons.first().map_or("", String::as_str)
+            );
+        }
+    }
+    println!("  State token        {}", plan.state_token);
+    println!("  Cost model         {}", plan.cost_model);
 }

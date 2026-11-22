@@ -87,6 +87,11 @@
           "unchanged": {
             "type": "boolean",
             "description": "The published file already had these bytes and was not rewritten"
+          },
+          "digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$",
+            "description": "BLAKE3-128 digest of the file's bytes, in hexadecimal (since 1.1)"
           }
         }
       }
@@ -253,6 +258,33 @@
         },
         "truncated": {
           "type": "boolean"
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "description": "Execution mode used and why (generate, validate; since 1.1).",
+      "required": [
+        "requested",
+        "chosen",
+        "reason"
+      ],
+      "properties": {
+        "requested": {
+          "enum": [
+            "full",
+            "skip-unchanged",
+            "auto"
+          ]
+        },
+        "chosen": {
+          "enum": [
+            "full",
+            "skip-unchanged"
+          ]
+        },
+        "reason": {
+          "type": "string"
         }
       }
     }

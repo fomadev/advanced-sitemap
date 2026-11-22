@@ -22,11 +22,14 @@ use sitemap_snapshot::{
 
 mod delta;
 
+pub(crate) use delta::DeltaPlan;
+
 use crate::hreflang::ReciprocityChecker;
 use crate::manifest::Manifest;
 use crate::report::ChangesReport;
 use crate::report::{
-    ArtifactKind, ArtifactReport, DiagnosticCollector, GenerationReport, RunStatus, Stats,
+    ArtifactKind, ArtifactReport, DiagnosticCollector, ExecutionDecision, GenerationReport,
+    RunStatus, Stats,
 };
 
 /// What to do with invalid records.
@@ -79,6 +82,10 @@ pub struct EngineConfig {
     pub publish: PublishPolicy,
     /// URL-level snapshot and change report. Default: `None` (off).
     pub snapshot: Option<SnapshotSettings>,
+    /// State token from `explain` ([`Engine::state_token`]): when set, a run
+    /// refuses to start if the published state changed since. Default:
+    /// `None`.
+    pub expected_state: Option<String>,
     /// Check hreflang return links and conflicting codes across entries.
     /// Costs about 110 bytes per alternate link (measured). Default: `false`.
     pub hreflang_reciprocity: bool,
@@ -104,6 +111,7 @@ impl Default for EngineConfig {
             hreflang_reciprocity: false,
             publish: PublishPolicy::All,
             snapshot: None,
+            expected_state: None,
         }
     }
 }
@@ -142,6 +150,21 @@ pub enum PublishPolicy {
     /// The published result is identical to `All`; unchanged files keep
     /// their modification time and are not rewritten.
     Changed,
+    /// `Changed` when a previous publication exists (its manifest, or its
+    /// main file without a manifest), `All` otherwise. Both give the same
+    /// published bytes; the report records the choice.
+    Auto,
+}
+
+impl PublishPolicy {
+    /// Execution mode name: `full`, `skip-unchanged` or `auto`.
+    pub fn mode_name(self) -> &'static str {
+        match self {
+            PublishPolicy::All => "full",
+            PublishPolicy::Changed => "skip-unchanged",
+            PublishPolicy::Auto => "auto",
+        }
+    }
 }
 
 /// Errors that stop a run (as opposed to diagnostics, which are reported).
@@ -161,6 +184,14 @@ pub enum EngineError {
     /// Another process is using the output or state directory; nothing was
     /// read or written. Retry when it has finished.
     Busy(String),
+    /// The published state is not the one the run was planned for
+    /// (`expected_state`, from `explain`); nothing was written.
+    StateChanged {
+        /// Token the run expected.
+        expected: String,
+        /// Token of the state found.
+        actual: String,
+    },
 }
 
 impl fmt::Display for EngineError {
@@ -172,6 +203,10 @@ impl fmt::Display for EngineError {
             EngineError::Xml(error) => write!(f, "XML error: {error}"),
             EngineError::DeltaRefused(reason) => write!(f, "delta refused: {reason}"),
             EngineError::Busy(reason) => write!(f, "busy: {reason}"),
+            EngineError::StateChanged { expected, actual } => write!(
+                f,
+                "the published state changed since it was planned (expected {expected}, found {actual}); run explain again"
+            ),
         }
     }
 }
@@ -228,8 +263,16 @@ type Completed = (
     Stats,
     DiagnosticCollector,
     Vec<ArtifactReport>,
-    Option<SnapshotBuilder>,
+    Option<PendingSnapshot>,
 );
+
+/// The new snapshot, written after the publication, with the digest of the
+/// manifest that was published before this run (to detect a stale previous
+/// snapshot).
+struct PendingSnapshot {
+    builder: SnapshotBuilder,
+    previous_manifest: Option<Digest>,
+}
 
 /// The sitemap engine. Stateless and reusable: each run is independent.
 #[derive(Clone, Debug)]
@@ -319,17 +362,124 @@ impl Engine {
     ) -> Result<GenerationReport, EngineError> {
         let description = store.describe();
         let _state_lock = self.lock_destination(store)?;
-        store.set_compare_with_published(
-            mode == RunMode::Publish && self.config.publish == PublishPolicy::Changed,
-        );
-        let outcome = match self.stream(inputs, store) {
+        self.check_expected_state(store)?;
+        let execution = self.decide_execution(store)?;
+        let changed = execution.chosen == "skip-unchanged";
+        store.set_compare_with_published(mode == RunMode::Publish && changed);
+        let mut outcome = match self.stream(inputs, store) {
             Ok(outcome) => outcome,
             Err(error) => {
                 let _ = store.discard();
                 return Err(error);
             }
         };
-        self.finish_run(outcome, store, mode, description)
+        outcome.compare_with_published = changed;
+        let mut report = self.finish_run(outcome, store, mode, description)?;
+        report.execution = Some(execution);
+        Ok(report)
+    }
+
+    /// Resolves [`PublishPolicy::Auto`] for this store.
+    fn decide_execution(
+        &self,
+        store: &dyn ArtifactStore,
+    ) -> Result<ExecutionDecision, EngineError> {
+        let requested = self.config.publish.mode_name();
+        let (chosen, reason) = match self.config.publish {
+            PublishPolicy::All => ("full", "requested".to_owned()),
+            PublishPolicy::Changed => ("skip-unchanged", "requested".to_owned()),
+            PublishPolicy::Auto => {
+                let marker = self.publication_marker()?;
+                if store.read_published(&marker)?.is_some() {
+                    (
+                        "skip-unchanged",
+                        format!("{marker} is published: unchanged files are not rewritten"),
+                    )
+                } else {
+                    (
+                        "full",
+                        format!("{marker} is not published: first publication"),
+                    )
+                }
+            }
+        };
+        Ok(ExecutionDecision {
+            requested,
+            chosen,
+            reason,
+        })
+    }
+
+    /// The file whose presence shows a previous publication: the manifest,
+    /// or the main file when no manifest is written.
+    fn publication_marker(&self) -> Result<ArtifactName, EngineError> {
+        if self.config.manifest {
+            self.manifest_name()
+        } else {
+            self.config
+                .layout
+                .main_name()
+                .map_err(|e| EngineError::Config(e.to_string()))
+        }
+    }
+
+    /// `true` when `store` holds a previous publication.
+    pub(crate) fn previous_publication_exists(
+        &self,
+        store: &dyn ArtifactStore,
+    ) -> Result<bool, EngineError> {
+        Ok(store.read_published(&self.publication_marker()?)?.is_some())
+    }
+
+    /// A token identifying the published state a run starts from: the
+    /// settings that shape the output, the published manifest and the
+    /// snapshot. `explain` reports it; a run given it in `expected_state`
+    /// refuses to start if the state changed in between. Reads only.
+    pub fn state_token(&self, store: &dyn ArtifactStore) -> Result<String, EngineError> {
+        let mut input = Vec::with_capacity(128);
+        input.extend_from_slice(b"advanced-sitemap-state-v1\n");
+        input.extend_from_slice(&digest128(self.config.output_settings().as_bytes()));
+        let manifest = match self.config.manifest {
+            true => store.read_published(&self.manifest_name()?)?,
+            false => None,
+        };
+        input.extend_from_slice(&manifest.as_deref().map_or([0; 16], digest128));
+        if let Some(path) = self.config.snapshot_path() {
+            match File::open(&path) {
+                Ok(mut file) => {
+                    // The trailer is a BLAKE3 digest of the whole snapshot.
+                    use std::io::{Read as _, Seek as _, SeekFrom};
+                    let mut trailer = [0u8; 32];
+                    let read = file
+                        .seek(SeekFrom::End(-32))
+                        .and_then(|_| file.read_exact(&mut trailer));
+                    if read.is_err() {
+                        trailer = [0xff; 32]; // too short: damaged
+                    }
+                    input.extend_from_slice(&trailer);
+                }
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                    input.extend_from_slice(&[0; 32]);
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
+        Ok(sitemap_snapshot::to_hex(&digest128(&input)))
+    }
+
+    /// Refuses the run when `expected_state` is set and differs from the
+    /// current state token. Called with the locks held.
+    fn check_expected_state(&self, store: &dyn ArtifactStore) -> Result<(), EngineError> {
+        if let Some(expected) = &self.config.expected_state {
+            let actual = self.state_token(store)?;
+            if *expected != actual {
+                return Err(EngineError::StateChanged {
+                    expected: expected.clone(),
+                    actual,
+                });
+            }
+        }
+        Ok(())
     }
 
     /// Writes the index, manifest and snapshot, publishes or discards, and
@@ -345,9 +495,9 @@ impl Engine {
         match self.complete(outcome, store, mode) {
             Ok((status, stats, mut collector, artifacts, snapshot)) => {
                 let changes = match snapshot {
-                    Some(builder) if matches!(status, RunStatus::Published | RunStatus::Valid) => {
+                    Some(pending) if matches!(status, RunStatus::Published | RunStatus::Valid) => {
                         Some(self.finish_snapshot(
-                            builder,
+                            pending,
                             keep_previous.as_ref(),
                             mode,
                             &mut collector,
@@ -367,6 +517,7 @@ impl Engine {
                     diagnostic_counts,
                     diagnostics,
                     changes,
+                    execution: None,
                 })
             }
             Err(error) => {
@@ -656,18 +807,19 @@ impl Engine {
                 unchanged: reused_names.contains(publication.staged.as_str()),
                 entries: Some(partition.urls),
                 bytes: partition.bytes,
+                digest: partition.digest.as_ref().map(sitemap_snapshot::to_hex),
             })
             .collect();
         // Reused partitions have no staged file: they stay as published.
         publications.retain(|p| !reused_names.contains(p.staged.as_str()));
 
         if let Some((name, entries)) = &plan.index {
-            let writer = store.create(name)?;
-            let mut writer = writer;
+            let mut writer = sitemap_index::HashingWriter::new(store.create(name)?);
             let bytes = write_sitemap_index(&mut writer, entries).map_err(|e| match e {
                 XmlError::Io(error) => EngineError::Io(error),
                 other => EngineError::Xml(other),
             })?;
+            let (writer, digest) = writer.into_parts();
             writer.finish()?;
             publications.push(Publication {
                 staged: name.clone(),
@@ -679,6 +831,7 @@ impl Engine {
                 unchanged: false,
                 entries: Some(entries.len() as u64),
                 bytes,
+                digest: Some(sitemap_snapshot::to_hex(&digest)),
             });
         }
 
@@ -732,18 +885,18 @@ impl Engine {
                     unchanged: false,
                     entries: None,
                     bytes: text.len() as u64,
+                    digest: Some(sitemap_snapshot::to_hex(&digest128(text.as_bytes()))),
                 });
             }
         }
 
+        let mut manifest_digests = (None, None);
         if self.config.manifest {
             let name = self.manifest_name()?;
             let manifest = Manifest::from_artifacts(&artifacts, stats.urls_written);
-            if let Some(previous) = store
-                .read_published(&name)?
-                .as_deref()
-                .and_then(Manifest::parse)
-            {
+            let previous_bytes = store.read_published(&name)?;
+            manifest_digests.0 = previous_bytes.as_deref().map(digest128);
+            if let Some(previous) = previous_bytes.as_deref().and_then(Manifest::parse) {
                 for old in previous.artifacts {
                     if !artifacts.iter().any(|a| a.name == old.name) {
                         collector.push(
@@ -763,6 +916,7 @@ impl Engine {
                 }
             }
             let bytes = manifest.to_json_bytes();
+            manifest_digests.1 = Some(digest128(&bytes));
             let mut writer = store.create(&name)?;
             writer.write_all(&bytes)?;
             writer.finish()?;
@@ -776,6 +930,7 @@ impl Engine {
                 unchanged: false,
                 entries: None,
                 bytes: bytes.len() as u64,
+                digest: Some(sitemap_snapshot::to_hex(&digest128(&bytes))),
             });
         }
 
@@ -806,6 +961,13 @@ impl Engine {
                 RunStatus::Valid
             }
         };
+        let snapshot = snapshot.map(|builder| PendingSnapshot {
+            builder: match manifest_digests.1 {
+                Some(digest) => builder.with_publication(digest),
+                None => builder,
+            },
+            previous_manifest: manifest_digests.0,
+        });
         Ok((status, stats, collector, artifacts, snapshot))
     }
 }
@@ -890,7 +1052,7 @@ impl Engine {
     /// the previous snapshot, merged in order with the builder's.
     fn finish_snapshot(
         &self,
-        builder: SnapshotBuilder,
+        pending: PendingSnapshot,
         keep_previous: Option<&HashSet<u32>>,
         mode: RunMode,
         collector: &mut DiagnosticCollector,
@@ -906,6 +1068,10 @@ impl Engine {
             .directory
             .join(format!("{}.snapshot.tmp", self.config.layout.stem));
         let config = digest128(self.config.output_settings().as_bytes());
+        let PendingSnapshot {
+            builder,
+            previous_manifest,
+        } = pending;
 
         let file = File::create(&temp)?;
         let mut out = io::BufWriter::new(file);
@@ -926,7 +1092,14 @@ impl Engine {
         file.sync_all()?;
         drop(file);
 
-        let result = self.compare_snapshots(&path, &temp, &config, settings.max_listed, collector);
+        let result = self.compare_snapshots(
+            &path,
+            &temp,
+            &config,
+            previous_manifest.as_ref(),
+            settings.max_listed,
+            collector,
+        );
         let finished = match (&result, mode) {
             (Ok(_), RunMode::Publish) => fs::rename(&temp, &path)
                 .and_then(|()| sitemap_storage::sync_dir(&settings.directory)),
@@ -942,6 +1115,7 @@ impl Engine {
         previous: &Path,
         current: &Path,
         config: &Digest,
+        previous_manifest: Option<&Digest>,
         max_listed: usize,
         collector: &mut DiagnosticCollector,
     ) -> Result<ChangesReport, EngineError> {
@@ -951,6 +1125,18 @@ impl Engine {
         let attempt = match open_snapshot(previous) {
             Ok(Some(old)) => {
                 let config_changed = old.config() != config;
+                if let Some(described) = old.publication()
+                    && previous_manifest != Some(described)
+                {
+                    collector.push(
+                        Diagnostic::new(
+                            DiagnosticCode::SnapshotStale,
+                            "the previous snapshot does not describe the files in place (a run was interrupted after publishing): the change report compares with an older state",
+                            Location::artifact(previous.display().to_string()),
+                        )
+                        .with_suggestion("Nothing to do: this run replaces the snapshot."),
+                    );
+                }
                 diff(old, open_current()?, max_listed).map(|set| Some((set, config_changed)))
             }
             Ok(None) => Ok(None),
