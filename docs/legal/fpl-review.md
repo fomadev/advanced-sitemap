@@ -219,9 +219,9 @@ Zlib.
 - Ces licences autorisent l'usage dans un projet source-available ou
   propriétaire : **aucune incompatibilité** avec la FPL.
 - Obligation : conserver leurs notices de copyright et de licence **dans les
-  binaires distribués** (CLI, bindings Node et Python). À faire au moment de
-  la première release : générer un fichier de notices tiers (par exemple
-  avec `cargo about`) et l'inclure dans chaque archive et package.
+  binaires distribués** (CLI, bindings Node et Python). Fait pour la CLI :
+  `tools/notices.py` écrit `THIRD-PARTY-NOTICES.txt` dans chaque archive
+  (R27). À reprendre pour les bindings.
 - Aucune dépendance copyleft (GPL, LGPL, MPL, AGPL) n'est autorisée par la
   configuration actuelle. Une dépendance copyleft forte serait
   **incompatible** avec la section 4 de la FPL.
@@ -279,5 +279,5 @@ pour formuler les définitions de la section 3.1.
 
 La licence est donc définitive pour une première distribution (R19 clos).
 Reste une obligation indépendante de la FPL : joindre aux binaires les
-notices des dépendances (section 4), suivie par R27.
+notices des dépendances (section 4) ; c'est fait pour la CLI (R27).
 

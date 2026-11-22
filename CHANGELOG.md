@@ -22,7 +22,9 @@ contain breaking changes.
   requires the same output bytes on every platform after `generate` and
   `apply`. A `Release candidate` workflow builds and packages the CLI for
   seven targets with `SHA256SUMS`, checks each native binary against the
-  conformance fixtures, and publishes nothing. Final reports in
+  conformance fixtures, and publishes nothing. Every archive includes
+  `THIRD-PARTY-NOTICES.txt`, the license notices of the dependencies in
+  the binary (`tools/notices.py`). Final reports in
   `docs/production/` (final audit, release readiness, performance,
   compatibility, known limitations, operations checklist).
 

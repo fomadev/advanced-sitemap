@@ -20,7 +20,7 @@
 | Sécurité | Fuzzing stable et guidé par la couverture, lecteur borné, noms d'artefacts contraints, chaîne d'approvisionnement | Un défaut P1 trouvé et corrigé (R25) |
 | API | Types `#[non_exhaustive]` imposés par clippy, erreurs typées, politique SemVer, codes de diagnostic figés | Lot E (R17) |
 | Exploitation | `doctor` en lecture seule, codes de sortie et `error.kind` stables, liste de contrôle | Lots E et F |
-| Distribution | 7 binaires construits, 6 vérifiés contre les fixtures, `SHA256SUMS` | Lot F ; rien n'est publié |
+| Distribution | 7 binaires construits, 6 vérifiés contre les fixtures, notices des dépendances, `SHA256SUMS` | Lot F, R27 ; rien n'est publié |
 
 ## 2. Défauts trouvés et corrigés pendant la mission
 
@@ -42,7 +42,6 @@
 | R4 | Coupure électrique non testée par un banc | P2 | Arrêts brutaux du processus testés ; dépend d'un disque qui respecte `fsync` |
 | R15 | 50 M d'URL non mesurés | P2 | Non annoncé |
 | R18 | ADR-0010 à 0013 non approuvés | P1 pour 1.0 | Décision du propriétaire |
-| R27 | Notices des dépendances absentes des archives | P1 pour une distribution de binaires | À faire avant la première release |
 | R26 | Licence des contributions externes non tranchée | P2 | Avant la première contribution externe |
 | R20, R21, R23, R24 | Verrou illisible sous Windows, index d'index absent, calibration sur une machine, monothread | P3 | Documentés |
 
@@ -61,6 +60,6 @@ Le détail de chaque limite est dans [known-limitations.md](known-limitations.md
 Le moteur et la CLI remplissent les conditions techniques de sortie
 ([release-readiness.md](release-readiness.md)) : aucun défaut connu de
 corruption, comportement identique sur cinq plateformes, erreurs et
-limites documentées. La licence est décidée (FPL v1.0, Fordima Inc.). Une
-distribution attend l'approbation des ADR, les notices des dépendances
-dans les archives, et votre autorisation de publier.
+limites documentées. La licence est décidée (FPL v1.0, Fordima Inc.). Les
+notices des dépendances sont jointes aux archives. Une distribution attend
+l'approbation des ADR et votre autorisation de publier.

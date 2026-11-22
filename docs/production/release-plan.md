@@ -31,8 +31,7 @@ explicite du propriétaire du projet.
 
 Une version n'est déclarée prête que si toutes sont vraies. Leur état au
 lot F est dans [release-readiness.md](release-readiness.md) : toutes sont
-remplies sauf l'approbation des formats (R18) et les notices des
-dépendances dans les archives (R27).
+remplies sauf l'approbation des formats (R18).
 
 - [x] Aucun P0 ni P1 technique ouvert (R18 est une décision)
 - [x] Tests et CI verts sur les plateformes annoncées (5, ARM64 compris)
@@ -42,7 +41,7 @@ dépendances dans les archives (R27).
 - [x] Performance mesurée sur les volumes annoncés (jusqu'à 10 M)
 - [x] Documentation cohérente avec le code
 - [x] Licence finalisée (R19 : FPL v1.0, Fordima Inc.)
-- [ ] Notices des dépendances jointes aux binaires (R27)
+- [x] Notices des dépendances jointes aux binaires (R27)
 - [x] Formats persistants versionnés et politique de compatibilité écrite
 - [x] Aucun secret dans les artefacts
 - [x] Aucun défaut connu de corruption ou de publication incohérente
