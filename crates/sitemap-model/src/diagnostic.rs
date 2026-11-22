@@ -205,6 +205,8 @@ diagnostic_codes! {
     HreflangConflict => "HREFLANG_CONFLICT", Warning;
     /// Alternate links point outside the run, so their return links were not checked.
     HreflangTargetNotListed => "HREFLANG_TARGET_NOT_LISTED", Info;
+    /// The previous snapshot cannot be read (damaged, truncated or another format); it is ignored and replaced.
+    SnapshotInvalid => "SNAPSHOT_INVALID", Warning;
 }
 
 impl fmt::Display for DiagnosticCode {

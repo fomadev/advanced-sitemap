@@ -127,6 +127,63 @@ pub struct GenerationReport {
     pub diagnostic_counts: BTreeMap<&'static str, u64>,
     /// Diagnostics, in order of discovery, limited to `maxDiagnostics`.
     pub diagnostics: Vec<Diagnostic>,
+    /// Changes since the previous snapshot, when snapshots are enabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub changes: Option<ChangesReport>,
+}
+
+/// Changes between the previous snapshot and this run.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangesReport {
+    /// A previous snapshot was found and read. When `false`, every URL is
+    /// counted as added.
+    pub previous_snapshot: bool,
+    /// Settings that shape the output changed since the previous snapshot.
+    pub config_changed: bool,
+    /// URLs added.
+    pub added: u64,
+    /// URLs removed.
+    pub removed: u64,
+    /// URLs whose `<url>` block changed.
+    pub modified: u64,
+    /// URLs that only changed partition.
+    pub moved: u64,
+    /// URLs identical to the previous snapshot.
+    pub unchanged: u64,
+    /// Partition numbers that gained, lost or changed a URL.
+    pub partitions_touched: Vec<u32>,
+    /// First added URLs, in URL order.
+    pub added_urls: Vec<String>,
+    /// First removed URLs.
+    pub removed_urls: Vec<String>,
+    /// First modified URLs.
+    pub modified_urls: Vec<String>,
+    /// A list was cut at its limit; counts stay exact.
+    pub truncated: bool,
+}
+
+impl ChangesReport {
+    pub(crate) fn new(
+        set: sitemap_snapshot::ChangeSet,
+        previous_snapshot: bool,
+        config_changed: bool,
+    ) -> Self {
+        Self {
+            previous_snapshot,
+            config_changed,
+            added: set.added,
+            removed: set.removed,
+            modified: set.modified,
+            moved: set.moved,
+            unchanged: set.unchanged,
+            partitions_touched: set.partitions_touched.into_iter().collect(),
+            added_urls: set.added_urls,
+            removed_urls: set.removed_urls,
+            modified_urls: set.modified_urls,
+            truncated: set.truncated,
+        }
+    }
 }
 
 impl GenerationReport {

@@ -21,6 +21,7 @@ dependencies = [
  "sitemap-protocol",
  "sitemap-reader",
  "sitemap-robots",
+ "sitemap-snapshot",
  "sitemap-storage",
  "sitemap-validation",
  "sitemap-xml",

@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 use std::fmt;
+use std::fs::{self, File};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{self, Write as _};
+use std::path::{Path, PathBuf};
 
 use sitemap_index::{
     IndexMode, Layout, LayoutError, PartitionLimits, PartitionStrategy, PartitionSummary,
@@ -14,8 +16,13 @@ use sitemap_storage::{ArtifactName, ArtifactStore, Publication};
 use sitemap_validation::{ValidationOptions, Validator};
 use sitemap_xml::{Namespaces, XmlError, write_sitemap_index};
 
+use sitemap_snapshot::{
+    Digest, Record as SnapshotRecord, SnapshotBuilder, diff, digest128, open_file as open_snapshot,
+};
+
 use crate::hreflang::ReciprocityChecker;
 use crate::manifest::Manifest;
+use crate::report::ChangesReport;
 use crate::report::{
     ArtifactKind, ArtifactReport, DiagnosticCollector, GenerationReport, RunStatus, Stats,
 };
@@ -68,6 +75,8 @@ pub struct EngineConfig {
     pub robots: Option<RobotsConfig>,
     /// Which artifacts a publishing run replaces. Default: [`PublishPolicy::All`].
     pub publish: PublishPolicy,
+    /// URL-level snapshot and change report. Default: `None` (off).
+    pub snapshot: Option<SnapshotSettings>,
     /// Check hreflang return links and conflicting codes across entries.
     /// Costs about 110 bytes per alternate link (measured). Default: `false`.
     pub hreflang_reciprocity: bool,
@@ -92,6 +101,31 @@ impl Default for EngineConfig {
             robots: None,
             hreflang_reciprocity: false,
             publish: PublishPolicy::All,
+            snapshot: None,
+        }
+    }
+}
+
+/// Where and how the URL-level snapshot is kept.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SnapshotSettings {
+    /// State directory. The snapshot is `<directory>/<stem>.snapshot`; sorted
+    /// runs are spilled here while building it. Keep it out of the public
+    /// output directory.
+    pub directory: PathBuf,
+    /// Memory used to sort records before spilling to disk, in bytes.
+    pub memory_budget: usize,
+    /// Maximum URLs listed per change kind in the report (counts stay exact).
+    pub max_listed: usize,
+}
+
+impl SnapshotSettings {
+    /// Settings with a 64 MiB sort budget and 1,000 listed URLs per kind.
+    pub fn new(directory: impl Into<PathBuf>) -> Self {
+        Self {
+            directory: directory.into(),
+            memory_budget: 64 << 20,
+            max_listed: 1_000,
         }
     }
 }
@@ -169,7 +203,16 @@ struct StreamOutcome {
     collector: DiagnosticCollector,
     /// `None` when writing stopped (fail policy or structural error).
     partitions: Option<Vec<PartitionSummary>>,
+    snapshot: Option<SnapshotBuilder>,
 }
+
+type Completed = (
+    RunStatus,
+    Stats,
+    DiagnosticCollector,
+    Vec<ArtifactReport>,
+    Option<SnapshotBuilder>,
+);
 
 /// The sitemap engine. Stateless and reusable: each run is independent.
 #[derive(Clone, Debug)]
@@ -269,7 +312,13 @@ impl Engine {
             }
         };
         match self.complete(outcome, store, mode) {
-            Ok((status, stats, collector, artifacts)) => {
+            Ok((status, stats, mut collector, artifacts, snapshot)) => {
+                let changes = match snapshot {
+                    Some(builder) if matches!(status, RunStatus::Published | RunStatus::Valid) => {
+                        Some(self.finish_snapshot(builder, mode, &mut collector)?)
+                    }
+                    _ => None,
+                };
                 let (diagnostics, diagnostic_counts, severity_counts) = collector.finish();
                 Ok(GenerationReport {
                     schema_version: sitemap_protocol::REPORT_SCHEMA_VERSION,
@@ -281,6 +330,7 @@ impl Engine {
                     severity_counts,
                     diagnostic_counts,
                     diagnostics,
+                    changes,
                 })
             }
             Err(error) => {
@@ -316,6 +366,11 @@ impl Engine {
             .config
             .hreflang_reciprocity
             .then(ReciprocityChecker::default);
+        let mut snapshot = self
+            .config
+            .snapshot
+            .as_ref()
+            .map(|s| SnapshotBuilder::new(&s.directory, s.memory_budget));
 
         for input in inputs {
             let input = input?;
@@ -406,8 +461,15 @@ impl Engine {
                 continue;
             }
             match partitioner.push(&entry) {
-                Ok(_) => {
+                Ok(partition) => {
                     stats.urls_written += 1;
+                    if let Some(builder) = snapshot.as_mut() {
+                        builder.push(SnapshotRecord {
+                            loc: entry.loc.as_str().to_owned(),
+                            content: digest128(partitioner.last_block()),
+                            partition,
+                        })?;
+                    }
                     if let Some(checker) = reciprocity.as_mut() {
                         checker.record(&entry, location.record.unwrap_or(0), !self.config.dedupe);
                     }
@@ -470,6 +532,7 @@ impl Engine {
             stats,
             collector,
             partitions,
+            snapshot,
         })
     }
 
@@ -479,11 +542,12 @@ impl Engine {
         outcome: StreamOutcome,
         store: &mut dyn ArtifactStore,
         mode: RunMode,
-    ) -> Result<(RunStatus, Stats, DiagnosticCollector, Vec<ArtifactReport>), EngineError> {
+    ) -> Result<Completed, EngineError> {
         let StreamOutcome {
             stats,
             mut collector,
             partitions,
+            snapshot,
         } = outcome;
         let failed_status = match mode {
             RunMode::Publish => RunStatus::Failed,
@@ -495,7 +559,7 @@ impl Engine {
             Some(partitions) if !blocked => partitions,
             _ => {
                 store.discard()?;
-                return Ok((failed_status, stats, collector, Vec::new()));
+                return Ok((failed_status, stats, collector, Vec::new(), None));
             }
         };
 
@@ -529,7 +593,7 @@ impl Engine {
                         .with_suggestion(suggestion),
                 );
                 store.discard()?;
-                return Ok((failed_status, stats, collector, Vec::new()));
+                return Ok((failed_status, stats, collector, Vec::new(), None));
             }
         };
 
@@ -689,7 +753,126 @@ impl Engine {
                 RunStatus::Valid
             }
         };
-        Ok((status, stats, collector, artifacts))
+        Ok((status, stats, collector, artifacts, snapshot))
+    }
+}
+
+impl Engine {
+    /// Canonical description of the settings that shape the published bytes
+    /// (lifecycle invariant I7). Changing its text changes every snapshot's
+    /// configuration digest, so it is versioned.
+    fn output_settings(&self) -> String {
+        let c = &self.config;
+        let strategy = match c.strategy {
+            PartitionStrategy::Sequential => "sequential".to_owned(),
+            PartitionStrategy::StableHash { partitions } => format!("stable-hash:{partitions}"),
+        };
+        let index = match c.layout.index {
+            IndexMode::Auto => "auto",
+            IndexMode::Always => "always",
+            IndexMode::Never => "never",
+        };
+        let ns = c.namespaces;
+        format!(
+            "settings-v1\nengine={}\nstem={}\nmax-urls={}\nmax-bytes={}\nstrategy={strategy}\nindex={index}\npublic-base-url={}\nnamespaces={}{}{}{}\n",
+            crate::ENGINE_VERSION,
+            c.layout.stem,
+            c.limits.max_urls(),
+            c.limits.max_bytes(),
+            c.layout
+                .public_base_url
+                .as_ref()
+                .map_or("", |u| u.url().as_str()),
+            if ns.xhtml { "xhtml," } else { "" },
+            if ns.image { "image," } else { "" },
+            if ns.video { "video," } else { "" },
+            if ns.news { "news," } else { "" },
+        )
+    }
+
+    /// Writes the new snapshot, compares it with the previous one, and keeps
+    /// it only for a publishing run (it is written after the sitemaps: I3).
+    fn finish_snapshot(
+        &self,
+        builder: SnapshotBuilder,
+        mode: RunMode,
+        collector: &mut DiagnosticCollector,
+    ) -> Result<ChangesReport, EngineError> {
+        let Some(settings) = &self.config.snapshot else {
+            return Err(EngineError::Config("snapshot settings missing".to_owned()));
+        };
+        fs::create_dir_all(&settings.directory)?;
+        let path = settings
+            .directory
+            .join(format!("{}.snapshot", self.config.layout.stem));
+        let temp = settings
+            .directory
+            .join(format!("{}.snapshot.tmp", self.config.layout.stem));
+        let config = digest128(self.output_settings().as_bytes());
+
+        let file = File::create(&temp)?;
+        let mut out = io::BufWriter::new(file);
+        builder.finish(&config, &mut out)?;
+        let file = out.into_inner().map_err(io::IntoInnerError::into_error)?;
+        file.sync_all()?;
+        drop(file);
+
+        let result = self.compare_snapshots(&path, &temp, &config, settings.max_listed, collector);
+        let finished = match (&result, mode) {
+            (Ok(_), RunMode::Publish) => fs::rename(&temp, &path),
+            _ => fs::remove_file(&temp),
+        };
+        let report = result?;
+        finished?;
+        Ok(report)
+    }
+
+    fn compare_snapshots(
+        &self,
+        previous: &Path,
+        current: &Path,
+        config: &Digest,
+        max_listed: usize,
+        collector: &mut DiagnosticCollector,
+    ) -> Result<ChangesReport, EngineError> {
+        let open_current = || -> io::Result<_> {
+            open_snapshot(current)?.ok_or_else(|| io::Error::other("new snapshot disappeared"))
+        };
+        let attempt = match open_snapshot(previous) {
+            Ok(Some(old)) => {
+                let config_changed = old.config() != config;
+                diff(old, open_current()?, max_listed).map(|set| Some((set, config_changed)))
+            }
+            Ok(None) => Ok(None),
+            Err(error) => Err(error),
+        };
+        let (set, previous_snapshot, config_changed) = match attempt {
+            Ok(Some((set, changed))) => (set, true, changed),
+            Ok(None) => (
+                diff(std::iter::empty(), open_current()?, max_listed)?,
+                false,
+                false,
+            ),
+            Err(error) if error.kind() == io::ErrorKind::InvalidData => {
+                collector.push(
+                    Diagnostic::new(
+                        DiagnosticCode::SnapshotInvalid,
+                        format!("the previous snapshot cannot be read ({error}); it is replaced"),
+                        Location::artifact(previous.display().to_string()),
+                    )
+                    .with_suggestion(
+                        "Nothing to do: the change report starts again from this run.",
+                    ),
+                );
+                (
+                    diff(std::iter::empty(), open_current()?, max_listed)?,
+                    false,
+                    false,
+                )
+            }
+            Err(error) => return Err(EngineError::Io(error)),
+        };
+        Ok(ChangesReport::new(set, previous_snapshot, config_changed))
     }
 }
 

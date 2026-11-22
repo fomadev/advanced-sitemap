@@ -17,6 +17,7 @@ sitemap-index.workspace = true
 sitemap-protocol.workspace = true
 sitemap-reader.workspace = true
 sitemap-robots.workspace = true
+sitemap-snapshot.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
