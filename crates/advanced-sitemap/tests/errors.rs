@@ -12,7 +12,11 @@ fn engine_error_kinds_are_stable() {
     let cases = [
         (EngineError::Config("x".into()), "config", false),
         (EngineError::Io(io::Error::other("disk")), "io", false),
-        (EngineError::DeltaRefused("x".into()), "delta-refused", false),
+        (
+            EngineError::DeltaRefused("x".into()),
+            "delta-refused",
+            false,
+        ),
         (EngineError::Busy("x".into()), "busy", true),
         (
             EngineError::StateChanged {
