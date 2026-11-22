@@ -107,7 +107,7 @@ Chaque phase est utile seule, mesurée, et protégée par l'oracle I1.
 | A (**faite**, voir ci-dessous) | Ne publier que les fichiers dont les octets changent, par comparaison avec le fichier publié | Moins d'écritures disque et un `lastmod` d'index stable | `generate` relancé sans changement : 0 fichier publié ; durée égale à `validate` |
 | B (**faite**) | Snapshot par URL (clé et contenu), Diff Engine, rapport de changements | Liste exacte des ajouts, retraits et modifications | Comparaison avec les changements connus du test |
 | C (**faite**) | Stratégie `consistent-hash` (ADR-0012) et planner qui chiffre les déplacements | Agrandir le site sans déplacer la plupart des URL | Fraction d'URL déplacées mesurée contre 1/(N+1) |
-| D | Flux de changements (ajouts, mises à jour, suppressions) appliqués sur les fichiers publiés (ADR-0013) | Plus besoin de relire toute la source | Oracle I1 entre application du flux et régénération complète |
+| D (**faite**) | Flux de changements (ajouts, mises à jour, suppressions) appliqués sur les fichiers publiés (ADR-0013) | Plus besoin de relire toute la source | Oracle I1 entre application du flux et régénération complète |
 
 La phase A ne demande aucun nouveau format d'entrée et ne change aucun
 contrat existant.
@@ -160,6 +160,21 @@ contrat existant.
 - Limite : tous les anciens fichiers sont réécrits lors de
   l'agrandissement. Les réserves en octets et en news ne sont pas encore
   mesurées (le snapshot ne garde pas les tailles).
+
+### Phase D : ce qui a été fait (2026-11-22)
+
+- Aller-retour exact vérifié sur 3 000 entrées aléatoires (prérequis de
+  l'ADR-0013).
+- Format de flux `ChangeRecord` (`upsert`, `delete`) et commande `apply` :
+  seules les partitions touchées sont relues, vérifiées contre le snapshot
+  et réécrites dans l'ordre des URL.
+- I1 vérifié par un oracle aléatoire et à 1 M d'URL : la sortie est celle
+  d'une génération complète depuis les mêmes URL triées.
+- Mesures : 1 opération en environ 5 s contre 16,5 à 41 s pour une
+  génération complète à 1 M d'URL ; un flux qui touche toutes les
+  partitions est plus lent qu'une génération complète.
+- Reste à faire : choix automatique entre `delta` et `skip-unchanged` par
+  le planner, et réduction du coût fixe du snapshot (environ 4,5 s).
 
 ## 5. Questions ouvertes (à mesurer avant de trancher)
 

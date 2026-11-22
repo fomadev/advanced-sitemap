@@ -45,3 +45,26 @@ Le test de propriété d'aller-retour existe
 de conformance (y compris alternates, images, vidéos et news), relire le
 fichier puis réencoder ses entrées redonne exactement les blocs `<url>`
 générés. Il devra être étendu à des entrées aléatoires avant la phase D.
+
+## Mise à jour du 2026-11-22 : phase D implémentée
+
+- Le test d'aller-retour couvre maintenant 3 000 entrées aléatoires (tous
+  les champs et extensions, caractères à échapper, texte non ASCII, espaces
+  autour des valeurs) : `tests/roundtrip.rs`.
+- `Engine::apply_changes` et la commande `apply` appliquent un flux
+  `upsert` / `delete`. Les partitions touchées sont relues, comparées au
+  snapshot par une empreinte de séquence (BLAKE3 sur les couples `loc`,
+  empreinte de contenu, dans l'ordre des URL), modifiées et réécrites ;
+  les autres restent publiées telles quelles, avec leurs compteurs tirés du
+  manifest et leur `lastmod` tiré de l'index.
+- Refus avant toute écriture (`EngineError::DeltaRefused`) : stratégie
+  `sequential`, pas de snapshot, réglages changés, manifest absent,
+  réciprocité hreflang activée, fichier touché modifié hors du moteur ou
+  contenant des éléments non relus, partitions non nommées `<stem>-<n>.xml`.
+- Oracle I1 : 5 suites de 30 flux aléatoires sur les deux stratégies par
+  hachage donnent exactement les octets d'une génération complète triée ;
+  vérifié aussi à 1 M d'URL (26 fichiers identiques).
+- Le coût mesuré confirme la conséquence prévue : `delta` ne gagne que si
+  peu de partitions sont touchées. Le planner ne choisit pas encore
+  automatiquement entre `delta` et `skip-unchanged` : c'est la commande
+  qui décide.
