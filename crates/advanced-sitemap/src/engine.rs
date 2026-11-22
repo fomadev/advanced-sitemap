@@ -214,6 +214,9 @@ struct StreamOutcome {
     reused: Vec<PartitionSummary>,
     /// Skip staged artifacts identical to the published ones.
     compare_with_published: bool,
+    /// Partitions whose records are copied from the previous snapshot into
+    /// the new one, already sorted (delta mode).
+    keep_previous: Option<HashSet<u32>>,
 }
 
 type Completed = (
@@ -328,16 +331,22 @@ impl Engine {
     /// builds the report.
     fn finish_run(
         &self,
-        outcome: StreamOutcome,
+        mut outcome: StreamOutcome,
         store: &mut dyn ArtifactStore,
         mode: RunMode,
         description: sitemap_storage::StoreDescription,
     ) -> Result<GenerationReport, EngineError> {
+        let keep_previous = outcome.keep_previous.take();
         match self.complete(outcome, store, mode) {
             Ok((status, stats, mut collector, artifacts, snapshot)) => {
                 let changes = match snapshot {
                     Some(builder) if matches!(status, RunStatus::Published | RunStatus::Valid) => {
-                        Some(self.finish_snapshot(builder, mode, &mut collector)?)
+                        Some(self.finish_snapshot(
+                            builder,
+                            keep_previous.as_ref(),
+                            mode,
+                            &mut collector,
+                        )?)
                     }
                     _ => None,
                 };
@@ -557,6 +566,7 @@ impl Engine {
             snapshot,
             reused: Vec::new(),
             compare_with_published: self.config.publish == PublishPolicy::Changed,
+            keep_previous: None,
         })
     }
 
@@ -574,6 +584,7 @@ impl Engine {
             snapshot,
             reused,
             compare_with_published,
+            keep_previous: _,
         } = outcome;
         let failed_status = match mode {
             RunMode::Publish => RunStatus::Failed,
@@ -841,9 +852,13 @@ impl EngineConfig {
 impl Engine {
     /// Writes the new snapshot, compares it with the previous one, and keeps
     /// it only for a publishing run (it is written after the sitemaps: I3).
+    ///
+    /// With `keep_previous`, the records of those partitions are copied from
+    /// the previous snapshot, merged in order with the builder's.
     fn finish_snapshot(
         &self,
         builder: SnapshotBuilder,
+        keep_previous: Option<&HashSet<u32>>,
         mode: RunMode,
         collector: &mut DiagnosticCollector,
     ) -> Result<ChangesReport, EngineError> {
@@ -861,7 +876,19 @@ impl Engine {
 
         let file = File::create(&temp)?;
         let mut out = io::BufWriter::new(file);
-        builder.finish(&config, &mut out)?;
+        match keep_previous {
+            None => builder.finish(&config, &mut out)?,
+            Some(keep) => {
+                let previous = open_snapshot(&path)?
+                    .ok_or_else(|| io::Error::other("the previous snapshot disappeared"))?;
+                let kept = previous.filter(|record| {
+                    record
+                        .as_ref()
+                        .map_or(true, |record| keep.contains(&record.partition))
+                });
+                builder.finish_merged(&config, kept, &mut out)?
+            }
+        };
         let file = out.into_inner().map_err(io::IntoInnerError::into_error)?;
         file.sync_all()?;
         drop(file);
