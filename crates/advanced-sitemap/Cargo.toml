@@ -23,6 +23,7 @@ serde_json.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+flate2.workspace = true
 quick-xml.workspace = true
 
 [[bench]]

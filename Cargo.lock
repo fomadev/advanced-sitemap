@@ -13,6 +13,7 @@ name = "advanced-sitemap"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "flate2",
  "quick-xml",
  "serde",
  "serde_json",
