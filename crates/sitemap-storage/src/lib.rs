@@ -222,6 +222,30 @@ impl DirectoryLock {
     }
 }
 
+/// Waits between attempts to replace a published file that another program
+/// holds open (Windows only): about 2.3 seconds in all.
+#[cfg(windows)]
+const REPLACE_RETRY_DELAYS_MS: [u64; 8] = [10, 20, 40, 80, 160, 320, 640, 1000];
+
+/// Moves `from` over `to`. On Windows, a file opened by another program
+/// without delete sharing cannot be replaced (`PermissionDenied`); such
+/// holds are usually brief (a scanner, a request being served), so the
+/// rename is retried for a bounded time before giving up.
+fn replace(from: &Path, to: &Path) -> io::Result<()> {
+    #[cfg(windows)]
+    {
+        for delay in REPLACE_RETRY_DELAYS_MS {
+            match fs::rename(from, to) {
+                Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
+                    std::thread::sleep(std::time::Duration::from_millis(delay));
+                }
+                result => return result,
+            }
+        }
+    }
+    fs::rename(from, to)
+}
+
 /// Name of the lock file [`FsStore`] keeps in its output directory.
 pub const LOCK_FILE: &str = ".advanced-sitemap.lock";
 
@@ -511,7 +535,7 @@ impl ArtifactStore for FsStore {
             }
         }
         let identical = lock_set(&self.identical)?.clone();
-        for step in plan {
+        for (done, step) in plan.iter().enumerate() {
             let staged = dir.join(step.staged.as_str());
             if identical.contains(&step.staged) {
                 if step.staged == step.target {
@@ -528,7 +552,20 @@ impl ArtifactStore for FsStore {
                 .write(true)
                 .open(&staged)?
                 .sync_all()?;
-            fs::rename(staged, self.root.join(step.target.as_str()))?;
+            replace(&staged, &self.root.join(step.target.as_str())).map_err(|error| {
+                if error.kind() == io::ErrorKind::PermissionDenied {
+                    io::Error::new(
+                        error.kind(),
+                        format!(
+                            "cannot replace {}: {error}. Another program may hold it open without allowing it to be replaced (a web server or a scanner on Windows). {done} of {} files were already replaced and the others keep their previous version; run again once the file is released",
+                            step.target,
+                            plan.len()
+                        ),
+                    )
+                } else {
+                    error
+                }
+            })?;
         }
         if !plan.is_empty() {
             // Make the renames themselves durable (Unix).
@@ -1211,5 +1248,77 @@ mod tests {
             io::ErrorKind::WouldBlock
         );
         sync_dir(&tmp.0).unwrap();
+    }
+
+    #[cfg(windows)]
+    fn hold_without_delete_sharing(path: &Path) -> File {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_SHARE_READ: u32 = 1;
+        fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ)
+            .open(path)
+            .unwrap()
+    }
+
+    /// A brief hold (a scanner, a request being served) delays the
+    /// publication instead of failing it.
+    #[cfg(windows)]
+    #[test]
+    fn a_briefly_held_file_is_replaced_after_a_retry() {
+        let tmp = TempDir::new("held-briefly");
+        let mut store = FsStore::new(&tmp.0);
+        let a = stage(&mut store, "a.xml", b"old");
+        store
+            .publish(&[Publication::new(a.clone(), a.clone())])
+            .unwrap();
+        let held = hold_without_delete_sharing(&tmp.0.join("a.xml"));
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            drop(held);
+        });
+        let a = stage(&mut store, "a.xml", b"new");
+        store.publish(&[Publication::new(a.clone(), a)]).unwrap();
+        release.join().unwrap();
+        assert_eq!(fs::read(tmp.0.join("a.xml")).unwrap(), b"new");
+    }
+
+    /// A file held for good stops the publication with an error that names
+    /// it and says which files were replaced; the held file keeps its
+    /// previous bytes.
+    #[cfg(windows)]
+    #[test]
+    fn a_file_held_for_good_fails_with_a_clear_error() {
+        let tmp = TempDir::new("held-for-good");
+        let mut store = FsStore::new(&tmp.0);
+        let a = stage(&mut store, "a.xml", b"old a");
+        let b = stage(&mut store, "b.xml", b"old b");
+        store
+            .publish(&[
+                Publication::new(a.clone(), a.clone()),
+                Publication::new(b.clone(), b.clone()),
+            ])
+            .unwrap();
+        let held = hold_without_delete_sharing(&tmp.0.join("b.xml"));
+        let a = stage(&mut store, "a.xml", b"new a");
+        let b = stage(&mut store, "b.xml", b"new b");
+        let started = std::time::Instant::now();
+        let error = store
+            .publish(&[
+                Publication::new(a.clone(), a),
+                Publication::new(b.clone(), b),
+            ])
+            .unwrap_err();
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+        drop(held);
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        let message = error.to_string();
+        assert!(message.contains("cannot replace b.xml"), "{message}");
+        assert!(
+            message.contains("1 of 2 files were already replaced"),
+            "{message}"
+        );
+        assert_eq!(fs::read(tmp.0.join("a.xml")).unwrap(), b"new a");
+        assert_eq!(fs::read(tmp.0.join("b.xml")).unwrap(), b"old b");
     }
 }
