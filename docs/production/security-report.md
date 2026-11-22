@@ -108,7 +108,17 @@ doivent l'être, comme tests de régression.
 - Le fuzzing guidé par la couverture ne tourne qu'en CI (Linux). Aucun
   assainisseur mémoire n'est utile côté Rust sans code `unsafe`, mais les
   dépendances en contiennent : leur sûreté repose sur leurs propres audits.
-- La résistance à une coupure électrique n'est pas testée (lot F).
+- La résistance à une coupure électrique n'est pas testée par un banc ; les arrêts brutaux du processus le sont depuis le lot F (section 7).
 - Le chemin `apply` complet (relecture d'une partition publiée puis
   réécriture) est couvert par l'oracle aléatoire du lot B, pas par le
   fuzzing de fichiers publiés corrompus au-delà du lecteur.
+
+## 7. Complément du lot F
+
+| Point | Constat |
+|---|---|
+| Arrêt brutal pendant `generate` | Test `killing_generate_never_leaves_a_damaged_file` : 12 arrêts répartis de 5 % à 130 % de la durée mesurée d'une exécution, avec deux entrées alternées pour que chaque fichier change. Après chaque arrêt, tout sitemap publié est un document complet et valide ; un arrêt pendant la publication laisse un ensemble mixte que `doctor` signale, et l'exécution suivante répare tout |
+| Fichier tenu ouvert sous Windows (R8) | Reproduit : un fichier ouvert sans partage de suppression ne peut pas être remplacé (« accès refusé »). Le remplacement est maintenant réessayé environ 2,3 s ; au-delà, l'erreur nomme le fichier et dit combien ont été remplacés. Testé au niveau du stockage (blocage bref et permanent) et du moteur (échec, `doctor`, réparation) |
+| Contrôle d'intégrité en exploitation | `doctor` compare chaque fichier publié au manifeste (taille et empreinte BLAKE3) sans rien écrire |
+| Artefacts de la version candidate | Construits par la CI depuis le commit (`--locked`), archives aux membres horodatés de façon fixe, `SHA256SUMS`. Contenu : binaire, `LICENSE`, `README.md`, `CHANGELOG.md`, `BUILDINFO.txt` ; aucun secret (le workflow n'a que `contents: read` et aucun jeton de publication). Les binaires contiennent les tables de lignes de débogage, donc des chemins de construction de la CI |
+| Signature des artefacts | Non faite : seules les sommes SHA-256 sont produites. Une signature (Sigstore, GPG) relève de la décision de publication |
