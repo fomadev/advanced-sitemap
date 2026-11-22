@@ -77,6 +77,9 @@ pub struct ArtifactReport {
     /// The published file already had these exact bytes, so it was not
     /// rewritten (`PublishPolicy::Changed`).
     pub unchanged: bool,
+    /// BLAKE3-128 digest of the file's bytes, in hexadecimal, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
 }
 
 /// Store information included in reports.

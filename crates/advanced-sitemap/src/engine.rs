@@ -228,8 +228,16 @@ type Completed = (
     Stats,
     DiagnosticCollector,
     Vec<ArtifactReport>,
-    Option<SnapshotBuilder>,
+    Option<PendingSnapshot>,
 );
+
+/// The new snapshot, written after the publication, with the digest of the
+/// manifest that was published before this run (to detect a stale previous
+/// snapshot).
+struct PendingSnapshot {
+    builder: SnapshotBuilder,
+    previous_manifest: Option<Digest>,
+}
 
 /// The sitemap engine. Stateless and reusable: each run is independent.
 #[derive(Clone, Debug)]
@@ -345,9 +353,9 @@ impl Engine {
         match self.complete(outcome, store, mode) {
             Ok((status, stats, mut collector, artifacts, snapshot)) => {
                 let changes = match snapshot {
-                    Some(builder) if matches!(status, RunStatus::Published | RunStatus::Valid) => {
+                    Some(pending) if matches!(status, RunStatus::Published | RunStatus::Valid) => {
                         Some(self.finish_snapshot(
-                            builder,
+                            pending,
                             keep_previous.as_ref(),
                             mode,
                             &mut collector,
@@ -656,18 +664,19 @@ impl Engine {
                 unchanged: reused_names.contains(publication.staged.as_str()),
                 entries: Some(partition.urls),
                 bytes: partition.bytes,
+                digest: partition.digest.as_ref().map(sitemap_snapshot::to_hex),
             })
             .collect();
         // Reused partitions have no staged file: they stay as published.
         publications.retain(|p| !reused_names.contains(p.staged.as_str()));
 
         if let Some((name, entries)) = &plan.index {
-            let writer = store.create(name)?;
-            let mut writer = writer;
+            let mut writer = sitemap_index::HashingWriter::new(store.create(name)?);
             let bytes = write_sitemap_index(&mut writer, entries).map_err(|e| match e {
                 XmlError::Io(error) => EngineError::Io(error),
                 other => EngineError::Xml(other),
             })?;
+            let (writer, digest) = writer.into_parts();
             writer.finish()?;
             publications.push(Publication {
                 staged: name.clone(),
@@ -679,6 +688,7 @@ impl Engine {
                 unchanged: false,
                 entries: Some(entries.len() as u64),
                 bytes,
+                digest: Some(sitemap_snapshot::to_hex(&digest)),
             });
         }
 
@@ -732,18 +742,18 @@ impl Engine {
                     unchanged: false,
                     entries: None,
                     bytes: text.len() as u64,
+                    digest: Some(sitemap_snapshot::to_hex(&digest128(text.as_bytes()))),
                 });
             }
         }
 
+        let mut manifest_digests = (None, None);
         if self.config.manifest {
             let name = self.manifest_name()?;
             let manifest = Manifest::from_artifacts(&artifacts, stats.urls_written);
-            if let Some(previous) = store
-                .read_published(&name)?
-                .as_deref()
-                .and_then(Manifest::parse)
-            {
+            let previous_bytes = store.read_published(&name)?;
+            manifest_digests.0 = previous_bytes.as_deref().map(digest128);
+            if let Some(previous) = previous_bytes.as_deref().and_then(Manifest::parse) {
                 for old in previous.artifacts {
                     if !artifacts.iter().any(|a| a.name == old.name) {
                         collector.push(
@@ -763,6 +773,7 @@ impl Engine {
                 }
             }
             let bytes = manifest.to_json_bytes();
+            manifest_digests.1 = Some(digest128(&bytes));
             let mut writer = store.create(&name)?;
             writer.write_all(&bytes)?;
             writer.finish()?;
@@ -776,6 +787,7 @@ impl Engine {
                 unchanged: false,
                 entries: None,
                 bytes: bytes.len() as u64,
+                digest: Some(sitemap_snapshot::to_hex(&digest128(&bytes))),
             });
         }
 
@@ -806,6 +818,13 @@ impl Engine {
                 RunStatus::Valid
             }
         };
+        let snapshot = snapshot.map(|builder| PendingSnapshot {
+            builder: match manifest_digests.1 {
+                Some(digest) => builder.with_publication(digest),
+                None => builder,
+            },
+            previous_manifest: manifest_digests.0,
+        });
         Ok((status, stats, collector, artifacts, snapshot))
     }
 }
@@ -890,7 +909,7 @@ impl Engine {
     /// the previous snapshot, merged in order with the builder's.
     fn finish_snapshot(
         &self,
-        builder: SnapshotBuilder,
+        pending: PendingSnapshot,
         keep_previous: Option<&HashSet<u32>>,
         mode: RunMode,
         collector: &mut DiagnosticCollector,
@@ -906,6 +925,10 @@ impl Engine {
             .directory
             .join(format!("{}.snapshot.tmp", self.config.layout.stem));
         let config = digest128(self.config.output_settings().as_bytes());
+        let PendingSnapshot {
+            builder,
+            previous_manifest,
+        } = pending;
 
         let file = File::create(&temp)?;
         let mut out = io::BufWriter::new(file);
@@ -926,7 +949,14 @@ impl Engine {
         file.sync_all()?;
         drop(file);
 
-        let result = self.compare_snapshots(&path, &temp, &config, settings.max_listed, collector);
+        let result = self.compare_snapshots(
+            &path,
+            &temp,
+            &config,
+            previous_manifest.as_ref(),
+            settings.max_listed,
+            collector,
+        );
         let finished = match (&result, mode) {
             (Ok(_), RunMode::Publish) => fs::rename(&temp, &path)
                 .and_then(|()| sitemap_storage::sync_dir(&settings.directory)),
@@ -942,6 +972,7 @@ impl Engine {
         previous: &Path,
         current: &Path,
         config: &Digest,
+        previous_manifest: Option<&Digest>,
         max_listed: usize,
         collector: &mut DiagnosticCollector,
     ) -> Result<ChangesReport, EngineError> {
@@ -951,6 +982,18 @@ impl Engine {
         let attempt = match open_snapshot(previous) {
             Ok(Some(old)) => {
                 let config_changed = old.config() != config;
+                if let Some(described) = old.publication()
+                    && previous_manifest != Some(described)
+                {
+                    collector.push(
+                        Diagnostic::new(
+                            DiagnosticCode::SnapshotStale,
+                            "the previous snapshot does not describe the files in place (a run was interrupted after publishing): the change report compares with an older state",
+                            Location::artifact(previous.display().to_string()),
+                        )
+                        .with_suggestion("Nothing to do: this run replaces the snapshot."),
+                    );
+                }
                 diff(old, open_current()?, max_listed).map(|set| Some((set, config_changed)))
             }
             Ok(None) => Ok(None),

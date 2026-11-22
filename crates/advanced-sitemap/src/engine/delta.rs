@@ -113,10 +113,17 @@ impl Engine {
         // The previous manifest and index describe the partitions kept as
         // published.
         let stem = &config.layout.stem;
-        let manifest = store
+        let manifest_bytes = store
             .read_published(&self.manifest_name()?)?
-            .as_deref()
-            .and_then(Manifest::parse)
+            .ok_or_else(|| refuse("the previous publication has no manifest"))?;
+        if let Some(described) = previous.publication
+            && described != digest128(&manifest_bytes)
+        {
+            return Err(refuse(
+                "the snapshot describes another publication than the one in place (a run was interrupted after publishing); run a full generation",
+            ));
+        }
+        let manifest = Manifest::parse(&manifest_bytes)
             .ok_or_else(|| refuse("the previous publication has no readable manifest"))?;
         let lastmods = self.previous_index_lastmods(&*store, &manifest)?;
         let mut reused = Vec::new();
@@ -141,6 +148,7 @@ impl Engine {
                 )));
             }
             reused.push(PartitionSummary {
+                digest: artifact.digest.as_deref().and_then(parse_digest),
                 id: partition,
                 lastmod: lastmods.get(name.as_str()).cloned().flatten(),
                 staged_name: name,
@@ -302,7 +310,10 @@ impl Engine {
                 "the settings changed since the last publication; run a full generation",
             ));
         }
-        let mut previous = Previous::default();
+        let mut previous = Previous {
+            publication: reader.publication().copied(),
+            ..Previous::default()
+        };
         for record in reader {
             let record = record.map_err(|e| {
                 refuse(format!(
@@ -464,6 +475,8 @@ impl Engine {
 struct Previous {
     /// URLs per partition.
     counts: BTreeMap<u32, u64>,
+    /// Digest of the manifest of the publication the snapshot describes.
+    publication: Option<Digest>,
     /// Expected content of the touched partitions (snapshot records in
     /// `loc` order), in constant memory per partition.
     expected: HashMap<u32, SequenceDigest>,
@@ -532,4 +545,16 @@ fn read_partition(
         return Err(modified("an entry has different content"));
     }
     Ok(entries)
+}
+
+/// Parses a 32-character hexadecimal digest from a manifest.
+fn parse_digest(hex: &str) -> Option<sitemap_index::FileDigest> {
+    if hex.len() != 32 {
+        return None;
+    }
+    let mut out = [0u8; 16];
+    for (i, byte) in out.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(hex.get(2 * i..2 * i + 2)?, 16).ok()?;
+    }
+    Some(out)
 }
