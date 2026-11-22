@@ -232,6 +232,14 @@ Both functions are frozen by test vectors. Switching from one strategy to
 the other moves almost every URL once. Every existing file still changes
 when N grows, because each one gives some URLs to the new partition.
 
+## Change feeds (since 1.1)
+
+The `apply` command reads JSON Lines operations, one per line, validated by
+[`schemas/change-record.v1.schema.json`](../../schemas/change-record.v1.schema.json):
+`{"op": "upsert", "url": <URL record>}` or `{"op": "delete", "loc": "..."}`.
+Unknown fields and operations are rejected per line, like a malformed
+source record. See [the CLI](../cli/README.md#apply-delta-mode).
+
 ## Change report (`changes`, since 1.1)
 
 With `state.directory`, the report gains:

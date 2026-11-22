@@ -8,6 +8,14 @@ contain breaking changes.
 
 ### Added
 
+- Phase D of the Lifecycle Engine, the delta mode: `ChangeRecord` feed
+  format (`upsert`, `delete`; `schemas/change-record.v1.schema.json`),
+  `Engine::apply_changes` and the CLI `apply` command. Only the touched
+  partitions are read back, checked against the snapshot and rewritten;
+  the result equals a full generation from the URLs sorted by `loc`.
+  Refusals are `EngineError::DeltaRefused` (exit code 2).
+- Round-trip property test on 3,000 random entries.
+
 - Phase C of the Lifecycle Engine: `consistent-hash` partitioning strategy
   (jump consistent hash over FNV-1a 64, frozen by test vectors). Growing
   from N to N+1 partitions moves about 1/(N+1) of the URLs.
@@ -81,6 +89,10 @@ contain breaking changes.
   cost for staged files that are never published.
 - `ArtifactReport` gains `unchanged`; `EngineConfig` gains `publish`;
   `OutputSection` gains `publish`.
+- `EngineError` gains `DeltaRefused` (exhaustive matches must add it).
+  `JsonlReader` and `SourceRecord` gain a type parameter defaulting to
+  `RawUrlRecord`. `Partitioner` gains `finish_partial`, `close_partition`
+  and `store`; `sitemap-snapshot` gains `SequenceDigest`.
 - `PartitionStrategy` gains `ConsistentHash` (exhaustive matches must add
   it), `StrategySetting` gains `ConsistentHash`, `Plan` gains `migration`.
   `PushError` messages say "hash partition" instead of "stable-hash

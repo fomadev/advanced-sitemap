@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/fomadev/advanced-sitemap/schemas/change-record.v1.schema.json",
+  "title": "Advanced Sitemap change feed operation, protocol 1.1",
+  "description": "One line of a change feed (JSON Lines) for the delta mode. Operations apply in order; the last one on a URL wins.",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "url"
+      ],
+      "properties": {
+        "op": {
+          "const": "upsert"
+        },
+        "url": {
+          "$ref": "url-record.v1.schema.json",
+          "description": "The complete record; it replaces every field of an existing URL."
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "loc"
+      ],
+      "properties": {
+        "op": {
+          "const": "delete"
+        },
+        "loc": {
+          "type": "string",
+          "description": "URL to remove. Removing an unknown URL changes nothing."
+        }
+      }
+    }
+  ]
+}

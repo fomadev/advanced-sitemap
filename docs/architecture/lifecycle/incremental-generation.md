@@ -120,6 +120,9 @@ Voir [ADR-0013](../adr/0013-published-files-as-state.md). Résumé :
   impose donc un ordre de sortie trié, ce qui en fait une **option
   distincte**, jamais un changement silencieux de la sortie actuelle.
 
+État (2026-11-22) : implémenté (`advanced-sitemap apply`). Voir la mise à
+jour de l'ADR-0013 et les mesures dans `docs/performance/README.md`.
+
 ## 8. Tests prévus
 
 | Test | Vérifie |

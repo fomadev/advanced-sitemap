@@ -4,6 +4,7 @@
 //!   (`schemas/config.v1.schema.json`).
 //! * URL records: [`sitemap_model::RawUrlRecord`] with its serde representation
 //!   (`schemas/url-record.v1.schema.json`).
+//! * Change feeds for the `delta` mode: [`ChangeRecord`].
 //! * Readers for JSON arrays and JSON Lines that decode records one by one, so
 //!   that a malformed record becomes a diagnostic instead of aborting the run.
 //!
@@ -11,8 +12,11 @@
 //! engine accepts major 1 with a minor up to [`SUPPORTED_MINOR`]; a newer minor
 //! is refused explicitly rather than silently ignoring fields it may contain.
 
+mod change;
 mod config;
 mod reader;
+
+pub use change::ChangeRecord;
 
 pub use config::{
     ConfigDocument, ExtensionSetting, IndexSetting, InvalidPolicySetting, OutputSection,

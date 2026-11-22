@@ -166,3 +166,26 @@ fn diff_propagates_read_errors() {
     let broken = vec![Err(io::Error::other("disk"))];
     assert!(diff(broken, Vec::<io::Result<Record>>::new(), 1).is_err());
 }
+
+#[test]
+fn sequence_digest_depends_on_every_record_and_its_framing() {
+    use sitemap_snapshot::SequenceDigest;
+    let digest = |records: &[(&str, u8)]| {
+        let mut d = SequenceDigest::default();
+        for (loc, content) in records {
+            d.update(loc, &[*content; 16]);
+        }
+        (d.records(), d.finish())
+    };
+    let base = digest(&[("https://a/", 1), ("https://b/", 2)]);
+    assert_eq!(base, digest(&[("https://a/", 1), ("https://b/", 2)]));
+    assert_ne!(base, digest(&[("https://a/", 1), ("https://b/", 3)]));
+    assert_ne!(base, digest(&[("https://b/", 2), ("https://a/", 1)]));
+    assert_ne!(base.1, digest(&[("https://a/", 1)]).1);
+    // Moving bytes between two locs changes the digest (length framing).
+    assert_ne!(
+        digest(&[("ab", 1), ("c", 1)]).1,
+        digest(&[("a", 1), ("bc", 1)]).1
+    );
+    assert_eq!(SequenceDigest::default().records(), 0);
+}

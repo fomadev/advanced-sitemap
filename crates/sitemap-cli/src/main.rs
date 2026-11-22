@@ -85,6 +85,25 @@ enum Command {
         #[arg(long, default_value_t = 1000)]
         sample: usize,
     },
+    /// Apply a change feed (JSON Lines of upsert and delete operations) to the
+    /// published sitemaps, rewriting only the partitions it touches. Needs a
+    /// hash strategy and --state-dir; see docs/cli.
+    Apply {
+        #[command(flatten)]
+        common: CommonArgs,
+        /// Change feed (JSON Lines), or - for standard input.
+        #[arg(long)]
+        changes: PathBuf,
+        /// Output directory holding the published sitemaps (overrides output.directory).
+        #[arg(long, short)]
+        out: Option<PathBuf>,
+        /// Check and report without publishing anything.
+        #[arg(long)]
+        dry_run: bool,
+        /// Exit with code 1 when warnings are reported.
+        #[arg(long)]
+        deny_warnings: bool,
+    },
     /// Read and check existing sitemap or sitemap index files (plain or gzip). Writes nothing.
     Inspect(InspectArgs),
     /// Compare two sets of published sitemaps (files or directories). Writes nothing.
@@ -220,6 +239,7 @@ impl From<EngineError> for Failure {
             EngineError::Config(_) | EngineError::Protocol(_) => (EXIT_CONFIG, "config"),
             EngineError::Io(_) => (EXIT_IO, "io"),
             EngineError::Xml(_) => (EXIT_INTERNAL, "internal"),
+            EngineError::DeltaRefused(_) => (EXIT_CONFIG, "delta-refused"),
         };
         Failure {
             code,
@@ -252,6 +272,17 @@ fn absolute(path: &Path) -> Result<PathBuf, Failure> {
 
 /// Loads the configuration document (if any) and applies command-line overrides.
 fn load(common: &CommonArgs, out: Option<&Path>) -> Result<ResolvedConfig, Failure> {
+    let resolved = load_config(common, out)?;
+    if resolved.input.is_none() {
+        return Err(config_failure(
+            "no input: pass --input, or a --config with `urls` or `source`",
+        ));
+    }
+    Ok(resolved)
+}
+
+/// Like [`load`], without requiring a source (the `apply` command reads a feed).
+fn load_config(common: &CommonArgs, out: Option<&Path>) -> Result<ResolvedConfig, Failure> {
     let (mut doc, base_dir) = match &common.config {
         Some(path) => {
             let text = std::fs::read_to_string(path).map_err(|e| Failure {
@@ -349,13 +380,31 @@ fn load(common: &CommonArgs, out: Option<&Path>) -> Result<ResolvedConfig, Failu
         doc.output.directory = Some(absolute(out)?.to_string_lossy().into_owned());
     }
 
-    let resolved = resolve_config(doc, &base_dir)?;
-    if resolved.input.is_none() {
-        return Err(config_failure(
-            "no input: pass --input, or a --config with `urls` or `source`",
-        ));
-    }
-    Ok(resolved)
+    Ok(resolve_config(doc, &base_dir)?)
+}
+
+fn run_apply(
+    resolved: &ResolvedConfig,
+    changes: &Path,
+    mode: RunMode,
+) -> Result<GenerationReport, Failure> {
+    let engine = Engine::new(resolved.engine.clone())?;
+    let reader: Box<dyn std::io::BufRead> = if changes == Path::new("-") {
+        Box::new(std::io::stdin().lock())
+    } else {
+        let file = std::fs::File::open(changes).map_err(|e| Failure {
+            code: EXIT_IO,
+            kind: "io",
+            message: format!("{}: {e}", changes.display()),
+        })?;
+        Box::new(std::io::BufReader::new(file))
+    };
+    let feed = advanced_sitemap::protocol::JsonlReader::<_, advanced_sitemap::protocol::ChangeRecord>::typed(
+        reader,
+        advanced_sitemap::protocol::DEFAULT_MAX_LINE_BYTES,
+    );
+    let mut store = FsStore::new(&resolved.output_dir);
+    Ok(engine.apply_changes(feed, &mut store, mode)?)
 }
 
 fn run_engine(resolved: ResolvedConfig, mode: RunMode) -> Result<GenerationReport, Failure> {
@@ -406,6 +455,21 @@ fn main() -> ExitCode {
             let plan = explain(&resolved, sample.max(1))?;
             print_plan(&plan, format);
             Ok(ExitCode::SUCCESS)
+        }),
+        Command::Apply {
+            common,
+            changes,
+            out,
+            dry_run,
+            deny_warnings,
+        } => load_config(&common, out.as_deref()).and_then(|resolved| {
+            let mode = if dry_run {
+                RunMode::DryRun
+            } else {
+                RunMode::Publish
+            };
+            let report = run_apply(&resolved, &changes, mode)?;
+            Ok(finish_report("apply", &report, format, deny_warnings))
         }),
         Command::Inspect(args) => run_inspect(&args, format),
         Command::Diff(args) => run_diff(&args, format),

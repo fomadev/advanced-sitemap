@@ -536,3 +536,90 @@ fn explain_measures_migration_cost_from_the_snapshot() {
             .contains("PARTITION_HEADROOM_LOW")
     );
 }
+
+#[test]
+fn apply_rewrites_only_the_touched_partition() {
+    let temp = TempDir::new("apply");
+    let mut locs: Vec<String> = (0..300)
+        .map(|i| format!("https://example.com/p/{i}"))
+        .collect();
+    locs.sort();
+    let lines: String = locs
+        .iter()
+        .map(|loc| format!("{{\"loc\":\"{loc}\",\"lastmod\":\"2026-01-01\"}}\n"))
+        .collect();
+    fs::write(temp.0.join("urls.jsonl"), lines).unwrap();
+    let config = temp.0.join("config.json");
+    fs::write(
+        &config,
+        r#"{"schemaVersion": "1.1", "publicBaseUrl": "https://example.com/",
+            "partitioning": {"strategy": "consistent-hash", "partitions": 6},
+            "source": {"path": "urls.jsonl"}, "output": {"directory": "out"},
+            "state": {"directory": "state"}}"#,
+    )
+    .unwrap();
+    let feed = temp.0.join("changes.jsonl");
+    fs::write(
+        &feed,
+        "{\"op\":\"upsert\",\"url\":{\"loc\":\"https://example.com/p/5\",\"lastmod\":\"2026-02-02\"}}\n{\"op\":\"delete\",\"loc\":\"https://example.com/p/6\"}\n",
+    )
+    .unwrap();
+    let run = |args: &[&str]| {
+        bin()
+            .args(["--format", "json"])
+            .args(args)
+            .arg("--config")
+            .arg(&config)
+            .output()
+            .unwrap()
+    };
+
+    // Before any publication there is no snapshot: refused, exit 2.
+    let early = run(&["apply", "--changes", feed.to_str().unwrap()]);
+    assert_eq!(code(&early), 2);
+    assert_eq!(json(&early)["error"]["kind"], "delta-refused");
+
+    assert_eq!(code(&run(&["generate"])), 0);
+    let out = temp.0.join("out");
+    let before: std::collections::BTreeMap<String, Vec<u8>> = listing(&out)
+        .into_iter()
+        .map(|n| (n.clone(), fs::read(out.join(&n)).unwrap()))
+        .collect();
+
+    let dry = run(&["apply", "--dry-run", "--changes", feed.to_str().unwrap()]);
+    assert_eq!(code(&dry), 0, "{}", String::from_utf8_lossy(&dry.stdout));
+    assert_eq!(json(&dry)["status"], "valid");
+    for (name, bytes) in &before {
+        assert_eq!(
+            &fs::read(out.join(name)).unwrap(),
+            bytes,
+            "dry run changed {name}"
+        );
+    }
+
+    let applied = run(&["apply", "--changes", feed.to_str().unwrap()]);
+    assert_eq!(
+        code(&applied),
+        0,
+        "{}",
+        String::from_utf8_lossy(&applied.stdout)
+    );
+    let report = json(&applied);
+    assert_eq!(report["status"], "published");
+    assert_eq!(report["stats"]["urlsWritten"], 299);
+    assert_eq!(report["changes"]["modified"], 1);
+    assert_eq!(report["changes"]["removed"], 1);
+    let changed: Vec<String> = listing(&out)
+        .into_iter()
+        .filter(|n| fs::read(out.join(n)).unwrap() != before[n])
+        .collect();
+    let rewritten = report["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|a| a["unchanged"] == false)
+        .count();
+    assert_eq!(changed.len(), rewritten, "{changed:?}");
+    assert!(changed.len() <= 5, "{changed:?}"); // at most 2 partitions, index, manifest
+    assert!(changed.contains(&"sitemap.xml".to_owned()), "{changed:?}");
+}

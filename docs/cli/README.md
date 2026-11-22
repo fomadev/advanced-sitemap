@@ -11,6 +11,7 @@ advanced-sitemap [--format human|json] <generate|validate|explain> [options]
 | `explain` | Samples the input and describes what `generate` would do; writes no file |
 | `inspect` | Reads existing sitemap or sitemap index files (plain or gzip) and checks them; writes no file |
 | `diff` | Compares two sets of published sitemaps (files or directories); writes no file |
+| `apply` | Applies a change feed to the published sitemaps, rewriting only the partitions it touches (delta mode) |
 
 ## Input
 
@@ -136,13 +137,49 @@ go with the configured strategy. The JSON plan gains:
   `maxUrls` with the previous URLs alone. Byte and news headroom are not
   measured: the snapshot does not store sizes.
 
+## `apply` (delta mode)
+
+```sh
+advanced-sitemap generate --config sitemap.json          # once, from a source sorted by URL
+advanced-sitemap apply --config sitemap.json --changes changes.jsonl
+advanced-sitemap apply --config sitemap.json --changes - --dry-run < changes.jsonl
+```
+
+The feed is JSON Lines
+([`schemas/change-record.v1.schema.json`](../../schemas/change-record.v1.schema.json)):
+
+```json
+{"op": "upsert", "url": {"loc": "https://example.com/a", "lastmod": "2026-11-22"}}
+{"op": "delete", "loc": "https://example.com/b"}
+```
+
+- Operations apply in order; the last one on a URL wins (earlier ones are
+  counted in `duplicates`). An upsert replaces every field of the URL.
+- Only the partitions holding a changed URL are read back from the output
+  directory, checked against the snapshot, changed and rewritten, with
+  their entries in URL order. The other files are not touched.
+- The result is byte for byte the output of a full `generate` from the
+  same URLs sorted by `loc`. Start from such a publication: a source in
+  another order gives files whose untouched partitions keep that order.
+- Requirements, checked before anything is written: a `stable-hash` or
+  `consistent-hash` strategy, `--state-dir` with the snapshot of the
+  previous publication, the same settings as that publication, the
+  manifest, no `--hreflang-reciprocity`, and files named `<stem>-<n>.xml`.
+  A touched file changed outside the engine, or holding elements the
+  reader does not keep, is refused too. A refusal exits with code 2 and
+  `"kind": "delta-refused"`; run a full `generate` instead.
+- `--dry-run` checks and reports without publishing. Invalid operations
+  follow `validation.onInvalid`, as source records do.
+- Memory: the feed is held in memory (one entry per changed URL), plus one
+  partition at a time.
+
 ## Exit codes (stable contract)
 
 | Code | Meaning |
 |---|---|
 | 0 | Success. With `onInvalid = skip`, success can include reported errors for excluded records |
 | 1 | Generation failed or the input is invalid (or warnings with `--deny-warnings`) |
-| 2 | Usage or configuration error (bad flag, invalid or unsupported document) |
+| 2 | Usage or configuration error (bad flag, invalid or unsupported document), or a refused `apply` |
 | 3 | I/O error (missing input, unwritable output) |
 | 4 | Internal error |
 
