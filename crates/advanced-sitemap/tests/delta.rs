@@ -381,3 +381,36 @@ fn invalid_operations_follow_the_invalid_policy() {
     );
     assert_eq!(report.stats.urls_written, 11);
 }
+
+#[test]
+fn a_feed_over_the_operation_limit_is_refused_before_writing() {
+    let state = StateDir::new("feed-limit");
+    let mut config = config(
+        PartitionStrategy::ConsistentHash {
+            partitions: NonZeroU32::new(3).unwrap(),
+        },
+        &state,
+    );
+    let pages: BTreeMap<u64, u64> = (0..20).map(|id| (id, 0)).collect();
+    let store = MemoryStore::new();
+    full(&config, &pages, &mut store.clone());
+    let before = store.published().unwrap();
+    config.snapshot.as_mut().unwrap().max_feed_operations = 3;
+
+    // Four distinct URLs: over the limit.
+    let four: Vec<ChangeRecord> = (0..4)
+        .map(|id| ChangeRecord::Upsert { url: record(id, 9) })
+        .collect();
+    let reason = refused(apply(&config, four, &mut store.clone()));
+    assert!(reason.contains("more than 3 URLs"), "{reason}");
+    assert_eq!(store.published().unwrap(), before);
+
+    // Repeated operations on the same URLs count once.
+    let repeated: Vec<ChangeRecord> = (0..10)
+        .map(|i| ChangeRecord::Upsert {
+            url: record(i % 3, i),
+        })
+        .collect();
+    let report = apply(&config, repeated, &mut store.clone()).unwrap();
+    assert_eq!(report.stats.duplicates, 7);
+}

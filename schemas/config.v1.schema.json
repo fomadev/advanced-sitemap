@@ -232,6 +232,12 @@
           "type": "integer",
           "minimum": 0,
           "default": 1000
+        },
+        "maxFeedOperations": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 500000,
+          "description": "Distinct URLs a change feed may change in one apply; the feed is held in memory (about 800 bytes per URL)."
         }
       }
     }

@@ -182,13 +182,22 @@ pub fn resolve_config(doc: ConfigDocument, base_dir: &Path) -> Result<ResolvedCo
                 }),
             }),
         robots: doc.robots,
-        snapshot: doc.state.map(|state| {
-            let mut settings = SnapshotSettings::new(base_dir.join(state.directory));
-            if let Some(max) = state.max_listed {
-                settings.max_listed = max as usize;
-            }
-            settings
-        }),
+        snapshot: doc
+            .state
+            .map(|state| {
+                let mut settings = SnapshotSettings::new(base_dir.join(state.directory));
+                if let Some(max) = state.max_feed_operations {
+                    if max == 0 {
+                        return Err(config_error("state.maxFeedOperations must be at least 1"));
+                    }
+                    settings.max_feed_operations = max;
+                }
+                if let Some(max) = state.max_listed {
+                    settings.max_listed = max as usize;
+                }
+                Ok(settings)
+            })
+            .transpose()?,
         expected_state: None,
     };
 

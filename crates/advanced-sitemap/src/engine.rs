@@ -127,15 +127,24 @@ pub struct SnapshotSettings {
     pub memory_budget: usize,
     /// Maximum URLs listed per change kind in the report (counts stay exact).
     pub max_listed: usize,
+    /// Distinct URLs a change feed may change in one `apply`. The feed is
+    /// held in memory (about 800 bytes per URL, measured); a larger feed
+    /// is refused before anything is written.
+    pub max_feed_operations: u64,
 }
 
+/// Default [`SnapshotSettings::max_feed_operations`]: about 400 MB of memory.
+pub const DEFAULT_MAX_FEED_OPERATIONS: u64 = 500_000;
+
 impl SnapshotSettings {
-    /// Settings with a 64 MiB sort budget and 1,000 listed URLs per kind.
+    /// Settings with a 64 MiB sort budget, 1,000 listed URLs per kind and
+    /// at most 500,000 changed URLs per feed.
     pub fn new(directory: impl Into<PathBuf>) -> Self {
         Self {
             directory: directory.into(),
             memory_budget: 64 << 20,
             max_listed: 1_000,
+            max_feed_operations: DEFAULT_MAX_FEED_OPERATIONS,
         }
     }
 }
