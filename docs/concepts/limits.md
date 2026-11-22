@@ -47,7 +47,7 @@ the number of URLs, by design, and are measured in
 
 | What | Cost | How to avoid it |
 |---|---|---|
-| Deduplication | 17 to 34 bytes per distinct URL | `validation.dedupe = false` (duplicates are then written twice) |
+| Deduplication | 17 to 34 bytes per distinct URL in steady state, up to about 54 at the peak while the table grows (416 MiB measured at 10 M URLs) | `validation.dedupe = false` (duplicates are then written twice) |
 | hreflang reciprocity | about 110 bytes per alternate link | Off by default |
 | JSON array input | the whole document | Use JSONL |
 
