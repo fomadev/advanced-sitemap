@@ -34,6 +34,7 @@ use crate::report::{
 
 /// What to do with invalid records.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum InvalidPolicy {
     /// Publish nothing if any record is invalid. Validation still runs to the
     /// end so that the report lists every problem.
@@ -45,6 +46,7 @@ pub enum InvalidPolicy {
 
 /// Whether to publish the artifacts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum RunMode {
     /// Publish on success.
     Publish,
@@ -54,6 +56,7 @@ pub enum RunMode {
 
 /// Engine configuration.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct EngineConfig {
     /// Validation profile, site and reference time.
     pub validation: ValidationOptions,
@@ -100,11 +103,7 @@ impl Default for EngineConfig {
             max_diagnostics: 1_000,
             strategy: PartitionStrategy::Sequential,
             limits: PartitionLimits::default(),
-            layout: Layout {
-                stem: "sitemap".to_owned(),
-                index: IndexMode::Auto,
-                public_base_url: None,
-            },
+            layout: Layout::new("sitemap"),
             manifest: true,
             namespaces: Namespaces::DEFAULT,
             robots: None,
@@ -118,6 +117,7 @@ impl Default for EngineConfig {
 
 /// Where and how the URL-level snapshot is kept.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct SnapshotSettings {
     /// State directory. The snapshot is `<directory>/<stem>.snapshot`; sorted
     /// runs are spilled here while building it. Keep it out of the public
@@ -151,6 +151,7 @@ impl SnapshotSettings {
 
 /// Which artifacts a publishing run replaces.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum PublishPolicy {
     /// Republish every artifact (the behaviour before 0.2).
     #[default]
@@ -178,6 +179,7 @@ impl PublishPolicy {
 
 /// Errors that stop a run (as opposed to diagnostics, which are reported).
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum EngineError {
     /// Invalid configuration.
     Config(String),
@@ -238,13 +240,10 @@ impl From<sitemap_protocol::ProtocolError> for EngineError {
 pub fn records(
     records: impl IntoIterator<Item = RawUrlRecord>,
 ) -> impl Iterator<Item = io::Result<SourceRecord>> {
-    records.into_iter().enumerate().map(|(i, record)| {
-        Ok(SourceRecord {
-            record: i as u64 + 1,
-            line: None,
-            result: Ok(record),
-        })
-    })
+    records
+        .into_iter()
+        .enumerate()
+        .map(|(i, record)| Ok(SourceRecord::new(i as u64 + 1, None, Ok(record))))
 }
 
 enum Input {
@@ -589,6 +588,7 @@ impl Engine {
                             let code = match error {
                                 DecodeError::Json(_) => DiagnosticCode::InputParseError,
                                 DecodeError::LineTooLong { .. } => DiagnosticCode::InputLineTooLong,
+                                _ => DiagnosticCode::InputParseError,
                             };
                             collector.push(
                                 Diagnostic::new(code, error.to_string(), location.clone())
@@ -660,11 +660,11 @@ impl Engine {
                 Ok(partition) => {
                     stats.urls_written += 1;
                     if let Some(builder) = snapshot.as_mut() {
-                        builder.push(SnapshotRecord {
-                            loc: entry.loc.as_str().to_owned(),
-                            content: digest128(partitioner.last_block()),
+                        builder.push(SnapshotRecord::new(
+                            entry.loc.as_str(),
+                            digest128(partitioner.last_block()),
                             partition,
-                        })?;
+                        ))?;
                     }
                     if let Some(checker) = reciprocity.as_mut() {
                         checker.record(&entry, location.record.unwrap_or(0), !self.config.dedupe);
@@ -702,6 +702,7 @@ impl Engine {
                 }
                 Err(PushError::Io(error)) => return Err(EngineError::Io(error)),
                 Err(PushError::Xml(error)) => return Err(EngineError::Xml(error)),
+                Err(other) => return Err(EngineError::Io(io::Error::other(other.to_string()))),
             }
         }
 
@@ -795,6 +796,7 @@ impl Engine {
                         "Split the site into several independent sitemap sets.",
                     ),
                     LayoutError::InvalidName(reason) => return Err(EngineError::Config(reason)),
+                    other => return Err(EngineError::Config(other.to_string())),
                 };
                 collector.push(
                     Diagnostic::new(code, error.to_string(), Location::default())
@@ -830,10 +832,7 @@ impl Engine {
             })?;
             let (writer, digest) = writer.into_parts();
             writer.finish()?;
-            publications.push(Publication {
-                staged: name.clone(),
-                target: name.clone(),
-            });
+            publications.push(Publication::new(name.clone(), name.clone()));
             artifacts.push(ArtifactReport {
                 name: name.as_str().to_owned(),
                 kind: ArtifactKind::Index,
@@ -884,10 +883,7 @@ impl Engine {
                 let mut writer = store.create(&name)?;
                 writer.write_all(text.as_bytes())?;
                 writer.finish()?;
-                publications.push(Publication {
-                    staged: name.clone(),
-                    target: name.clone(),
-                });
+                publications.push(Publication::new(name.clone(), name.clone()));
                 artifacts.push(ArtifactReport {
                     name: name.as_str().to_owned(),
                     kind: ArtifactKind::Robots,
@@ -929,10 +925,7 @@ impl Engine {
             let mut writer = store.create(&name)?;
             writer.write_all(&bytes)?;
             writer.finish()?;
-            publications.push(Publication {
-                staged: name.clone(),
-                target: name.clone(),
-            });
+            publications.push(Publication::new(name.clone(), name.clone()));
             artifacts.push(ArtifactReport {
                 name: name.as_str().to_owned(),
                 kind: ArtifactKind::Manifest,
@@ -1021,6 +1014,9 @@ impl EngineConfig {
             PartitionStrategy::ConsistentHash { partitions } => {
                 format!("consistent-hash:{partitions}")
             }
+            // A strategy added later gets its own line format when it is
+            // supported here; its name keeps the digest distinct meanwhile.
+            other => other.name().to_owned(),
         };
         let index = match c.layout.index {
             IndexMode::Auto => "auto",

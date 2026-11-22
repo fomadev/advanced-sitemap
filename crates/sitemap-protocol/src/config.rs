@@ -9,6 +9,7 @@ use crate::{DEFAULT_MAX_DOCUMENT_BYTES, ProtocolError, check_schema_version};
 /// be given; a CLI may also provide the input separately.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[non_exhaustive]
 pub struct ConfigDocument {
     /// `"1.0"`.
     pub schema_version: String,
@@ -49,6 +50,7 @@ pub struct ConfigDocument {
 /// Where the engine keeps its state between runs.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct StateSection {
     /// State directory, relative to the configuration file. Keep it out of
     /// the public output directory.
@@ -61,6 +63,17 @@ pub struct StateSection {
     /// held in memory, about 800 bytes per URL). Default 500000.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_feed_operations: Option<u64>,
+}
+
+impl StateSection {
+    /// State kept in `directory`, with the default limits.
+    pub fn new(directory: impl Into<String>) -> Self {
+        StateSection {
+            directory: directory.into(),
+            max_listed: None,
+            max_feed_operations: None,
+        }
+    }
 }
 
 impl ConfigDocument {
@@ -123,6 +136,7 @@ impl Default for ConfigDocument {
 /// Validation profile.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum ValidationModeSetting {
     /// Protocol conformance.
     #[default]
@@ -134,6 +148,7 @@ pub enum ValidationModeSetting {
 /// What to do with invalid records.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum InvalidPolicySetting {
     /// Publish nothing if any record is invalid (default).
     #[default]
@@ -145,6 +160,7 @@ pub enum InvalidPolicySetting {
 /// `validation` section.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[non_exhaustive]
 pub struct ValidationSection {
     /// Profile. Default `standard`.
     #[serde(default)]
@@ -186,6 +202,7 @@ fn default_max_diagnostics() -> u32 {
 /// Partitioning strategy.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum StrategySetting {
     /// Fill files in input order.
     #[default]
@@ -199,6 +216,7 @@ pub enum StrategySetting {
 /// `partitioning` section.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[non_exhaustive]
 pub struct PartitioningSection {
     /// Strategy. Default `sequential`.
     #[serde(default)]
@@ -217,6 +235,7 @@ pub struct PartitioningSection {
 /// Index policy.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum IndexSetting {
     /// Index only when there is more than one file.
     #[default]
@@ -230,6 +249,7 @@ pub enum IndexSetting {
 /// `output` section.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[non_exhaustive]
 pub struct OutputSection {
     /// Output directory, relative to the configuration file. Default `.`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -256,6 +276,7 @@ pub struct OutputSection {
 /// Publication policy.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum PublishSetting {
     /// Republish every file.
     #[default]
@@ -270,6 +291,7 @@ pub enum PublishSetting {
 /// An optional sitemap extension.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum ExtensionSetting {
     /// Google video extension (`xmlns:video`).
     Video,
@@ -297,6 +319,7 @@ fn default_stem() -> String {
 /// Input format.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum SourceFormat {
     /// A JSON array of records, loaded in memory.
     Json,
@@ -329,6 +352,7 @@ impl SourceFormat {
 /// `source` section.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[non_exhaustive]
 pub struct SourceSection {
     /// Format. Inferred from the extension when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -338,6 +362,17 @@ pub struct SourceSection {
     /// Maximum length of a JSONL line, in bytes. Default 1 MiB.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_line_bytes: Option<u32>,
+}
+
+impl SourceSection {
+    /// Records read from `path`, in the format given by its extension.
+    pub fn new(path: impl Into<String>) -> Self {
+        SourceSection {
+            format: None,
+            path: path.into(),
+            max_line_bytes: None,
+        }
+    }
 }
 
 #[cfg(test)]

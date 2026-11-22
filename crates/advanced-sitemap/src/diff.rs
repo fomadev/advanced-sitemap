@@ -21,6 +21,7 @@ use crate::report::ChangesReport;
 /// One side of a comparison.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct DiffSide {
     /// Files read, in order.
     pub files: Vec<FileInspection>,
@@ -38,6 +39,7 @@ impl DiffSide {
 /// Result of [`diff_files`].
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct DiffReport {
     /// The old side.
     pub old: DiffSide,
@@ -88,11 +90,7 @@ fn read_side(
                 let pushed = sitemap_xml::encode_url(&entry, &mut block)
                     .map_err(|e| io::Error::other(e.to_string()))
                     .and_then(|()| {
-                        builder.push(Record {
-                            loc: entry.loc.as_str().to_owned(),
-                            content: digest128(&block),
-                            partition: 0,
-                        })
+                        builder.push(Record::new(entry.loc.as_str(), digest128(&block), 0))
                     });
                 if let Err(error) = pushed {
                     failure = Some(error);

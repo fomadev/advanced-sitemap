@@ -7,6 +7,7 @@ use sitemap_storage::StoreDescription;
 /// Outcome of a run.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum RunStatus {
     /// Artifacts were published.
     Published,
@@ -21,6 +22,7 @@ pub enum RunStatus {
 /// Counters of a run.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct Stats {
     /// Records read from the source.
     pub records: u64,
@@ -36,6 +38,7 @@ pub struct Stats {
 
 /// Number of diagnostics per severity (exact, even when the list is truncated).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 pub struct SeverityCounts {
     /// Errors.
     pub error: u64,
@@ -50,6 +53,7 @@ pub struct SeverityCounts {
 /// Kind of artifact.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum ArtifactKind {
     /// A `<urlset>` file.
     Sitemap,
@@ -64,6 +68,7 @@ pub enum ArtifactKind {
 /// An artifact produced by the run.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct ArtifactReport {
     /// Public file name.
     pub name: String,
@@ -111,6 +116,7 @@ impl From<StoreDescription> for StoreReport {
 /// (`schemas/report.v1.schema.json`).
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct GenerationReport {
     /// Report format version.
     pub schema_version: &'static str,
@@ -141,6 +147,7 @@ pub struct GenerationReport {
 /// The execution mode of a run.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct ExecutionDecision {
     /// `full`, `skip-unchanged` or `auto`.
     pub requested: &'static str,
@@ -153,6 +160,7 @@ pub struct ExecutionDecision {
 /// Changes between the previous snapshot and this run.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct ChangesReport {
     /// A previous snapshot was found and read. When `false`, every URL is
     /// counted as added.

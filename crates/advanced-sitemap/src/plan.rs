@@ -11,7 +11,7 @@ use serde::Serialize;
 use sitemap_index::{IndexMode, PartitionStrategy};
 use sitemap_model::Location;
 use sitemap_protocol::SourceFormat;
-use sitemap_validation::{ValidationMode, Validator};
+use sitemap_validation::Validator;
 use sitemap_xml::{URLSET_FOOTER, encode_url, urlset_header};
 
 use crate::config::{InputSpec, ResolvedConfig, open_input};
@@ -24,6 +24,7 @@ pub use execution::{Candidate, CostModel, ExecutionPlan};
 /// A number with its provenance.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", content = "value", rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum Quantity {
     /// Measured on the actual input.
     Measured(u64),
@@ -67,6 +68,7 @@ impl Quantity {
 /// Measurements on the sampled records.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct SampleStats {
     /// Records sampled.
     pub records: u64,
@@ -81,6 +83,7 @@ pub struct SampleStats {
 /// Input section of a plan.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct InputPlan {
     /// `inline`, `json` or `jsonl`.
     pub source: &'static str,
@@ -97,6 +100,7 @@ pub struct InputPlan {
 /// Partitioning section of a plan.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct PartitioningPlan {
     /// `sequential`, `stable-hash` or `consistent-hash`.
     pub strategy: &'static str,
@@ -116,6 +120,7 @@ pub struct PartitioningPlan {
 /// computed from its URL-level snapshot (`state.directory`).
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct MigrationPlan {
     /// URLs of the previous publication.
     pub previous_urls: u64,
@@ -135,6 +140,7 @@ pub struct MigrationPlan {
 /// What a run would do.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct Plan {
     /// Input.
     pub input: InputPlan,
@@ -250,6 +256,11 @@ pub fn explain_with(
                     Quantity::Measured(size),
                     estimate_jsonl_records(path, size, sample_size)?,
                 ),
+                other => {
+                    return Err(EngineError::Config(format!(
+                        "source format {other:?} is not supported by this engine version"
+                    )));
+                }
             }
         }
     };
@@ -363,6 +374,8 @@ pub fn explain_with(
                 suggested,
             )
         }
+        // A strategy added later is planned once it is supported here.
+        other => (other.name(), Quantity::Unknown, Quantity::Unknown, None),
     };
 
     let multiple = files.value().is_some_and(|n| n > 1);
@@ -467,10 +480,7 @@ pub fn explain_with(
             records,
             sample: (sample.records > 0).then_some(sample),
         },
-        validation: match config.validation.mode {
-            ValidationMode::Standard => "standard",
-            ValidationMode::Strict => "strict",
-        },
+        validation: config.validation.mode.as_str(),
         on_invalid: match config.on_invalid {
             InvalidPolicy::Fail => "fail",
             InvalidPolicy::Skip => "skip",

@@ -18,6 +18,7 @@ use crate::report::SeverityCounts;
 /// Serializable result of inspecting one document.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct FileInspection {
     /// Path or label of the input (`-` for standard input).
     pub path: String,

@@ -88,12 +88,7 @@ impl Validator {
         if out[first..].iter().any(Diagnostic::is_error) {
             return None;
         }
-        Some(News {
-            publication_name: name?,
-            language: language?,
-            publication_date: publication_date?,
-            title: title?,
-        })
+        Some(News::new(name?, language?, publication_date?, title?))
     }
 
     fn news_text(
@@ -149,21 +144,26 @@ mod tests {
     use crate::ValidationOptions;
 
     fn record(news: RawNews) -> RawUrlRecord {
-        RawUrlRecord {
-            loc: Some("https://example.com/article".into()),
-            news: Some(news),
-            ..RawUrlRecord::default()
+        {
+            let mut this = RawUrlRecord::default();
+            this.loc = Some("https://example.com/article".into());
+            this.news = Some(news);
+            this
         }
     }
 
     fn valid() -> RawNews {
-        RawNews {
-            publication: Some(RawNewsPublication {
-                name: Some("The Example Times".into()),
-                language: Some("EN".into()),
-            }),
-            publication_date: Some("2026-11-20T08:00:00Z".into()),
-            title: Some("Companies A, B in merger talks".into()),
+        {
+            let mut this = RawNews::default();
+            this.publication = Some({
+                let mut this = RawNewsPublication::default();
+                this.name = Some("The Example Times".into());
+                this.language = Some("EN".into());
+                this
+            });
+            this.publication_date = Some("2026-11-20T08:00:00Z".into());
+            this.title = Some("Companies A, B in merger talks".into());
+            this
         }
     }
 
@@ -188,13 +188,17 @@ mod tests {
 
     #[test]
     fn invalid_news_reports_each_problem() {
-        let raw = record(RawNews {
-            publication: Some(RawNewsPublication {
-                name: Some(" ".into()),
-                language: Some("en-gb".into()),
-            }),
-            publication_date: Some("yesterday".into()),
-            title: None,
+        let raw = record({
+            let mut this = RawNews::default();
+            this.publication = Some({
+                let mut this = RawNewsPublication::default();
+                this.name = Some(" ".into());
+                this.language = Some("en-gb".into());
+                this
+            });
+            this.publication_date = Some("yesterday".into());
+            this.title = None;
+            this
         });
         let (ok, found) = codes(&raw, ValidationOptions::default());
         assert!(!ok);

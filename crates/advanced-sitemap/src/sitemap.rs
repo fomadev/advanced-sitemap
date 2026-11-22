@@ -24,6 +24,7 @@ pub struct SitemapBuilder {
 
 /// Why a [`Sitemap`] cannot be built or serialized.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum SitemapError {
     /// More than 50,000 URLs.
     TooManyUrls {

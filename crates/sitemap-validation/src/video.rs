@@ -253,10 +253,7 @@ impl Validator {
                     }
                 }
             }
-            ok.then_some(VideoRestriction {
-                relationship: relationship?,
-                countries,
-            })
+            ok.then_some(VideoRestriction::new(relationship?, countries))
         });
 
         let platform = raw.platform.as_ref().and_then(|p| {
@@ -287,10 +284,7 @@ impl Validator {
                     }
                 }
             }
-            ok.then_some(VideoPlatform {
-                relationship: relationship?,
-                platforms,
-            })
+            ok.then_some(VideoPlatform::new(relationship?, platforms))
         });
 
         let uploader = raw.uploader.as_ref().and_then(|u| {
@@ -341,35 +335,31 @@ impl Validator {
                         ),
                     );
                 }
-            Some(VideoUploader {
-                name: name.to_owned(),
-                info,
-            })
+            Some(VideoUploader::new(name, info))
         });
 
         let has_error = out[first..].iter().any(Diagnostic::is_error);
         if has_error {
             return None;
         }
-        Some(Video {
-            thumbnail_loc: thumbnail_loc?,
-            title: title?,
-            description: description?,
-            content_loc,
-            player_loc,
-            duration,
-            expiration_date,
-            rating,
-            view_count: raw.view_count,
-            publication_date,
-            tags,
-            family_friendly: raw.family_friendly,
-            restriction,
-            requires_subscription: raw.requires_subscription,
-            uploader,
-            platform,
-            live: raw.live,
-        })
+        let thumbnail_loc = thumbnail_loc?;
+        // The locations are set below exactly as validated.
+        let mut video = Video::new(thumbnail_loc.clone(), title?, description?, thumbnail_loc);
+        video.content_loc = content_loc;
+        video.player_loc = player_loc;
+        video.duration = duration;
+        video.expiration_date = expiration_date;
+        video.rating = rating;
+        video.view_count = raw.view_count;
+        video.publication_date = publication_date;
+        video.tags = tags;
+        video.family_friendly = raw.family_friendly;
+        video.restriction = restriction;
+        video.requires_subscription = raw.requires_subscription;
+        video.uploader = uploader;
+        video.platform = platform;
+        video.live = raw.live;
+        Some(video)
     }
 
     /// A required, non-empty text. Surrounding whitespace is kept out.
@@ -474,21 +464,20 @@ mod tests {
     use crate::ValidationOptions;
 
     fn base_video() -> RawVideo {
-        RawVideo {
-            thumbnail_loc: Some("https://example.com/t.jpg".into()),
-            title: Some("Grilling steaks".into()),
-            description: Some("How to grill steaks.".into()),
-            content_loc: Some("https://cdn.example.com/v.mp4".into()),
-            ..RawVideo::default()
+        {
+            let mut this = RawVideo::default();
+            this.thumbnail_loc = Some("https://example.com/t.jpg".into());
+            this.title = Some("Grilling steaks".into());
+            this.description = Some("How to grill steaks.".into());
+            this.content_loc = Some("https://cdn.example.com/v.mp4".into());
+            this
         }
     }
 
     fn check(video: RawVideo, options: ValidationOptions) -> (Option<Video>, Vec<&'static str>) {
-        let raw = RawUrlRecord {
-            loc: Some("https://example.com/watch".into()),
-            videos: vec![video],
-            ..RawUrlRecord::default()
-        };
+        let mut raw = RawUrlRecord::default();
+        raw.loc = Some("https://example.com/watch".into());
+        raw.videos = vec![video];
         let mut out = Vec::new();
         let entry = Validator::new(options).validate(&raw, &Location::record(1, None), &mut out);
         let codes = out.iter().map(|d| d.code.as_str()).collect();
@@ -504,31 +493,35 @@ mod tests {
 
     #[test]
     fn full_video_is_normalized() {
-        let video = RawVideo {
-            player_loc: Some("https://example.com/player?v=1".into()),
-            duration: Some(600),
-            rating: Some(4.2),
-            view_count: Some(12),
-            expiration_date: Some("2030-01-01".into()),
-            publication_date: Some("2026-01-01T10:00:00+01:00".into()),
-            tags: vec!["steak".into(), "grill".into()],
-            family_friendly: Some(true),
-            restriction: Some(RawVideoRestriction {
-                relationship: Some("allow".into()),
-                countries: vec!["fr".into(), "BE".into(), "FR".into()],
-            }),
-            platform: Some(RawVideoPlatform {
-                relationship: Some("deny".into()),
-                platforms: vec!["tv".into()],
-            }),
-            requires_subscription: Some(false),
-            uploader: Some(RawVideoUploader {
-                name: Some("Chef".into()),
-                info: Some("https://example.com/chef".into()),
-            }),
-            live: Some(false),
-            ..base_video()
-        };
+        let mut video = base_video();
+        video.player_loc = Some("https://example.com/player?v=1".into());
+        video.duration = Some(600);
+        video.rating = Some(4.2);
+        video.view_count = Some(12);
+        video.expiration_date = Some("2030-01-01".into());
+        video.publication_date = Some("2026-01-01T10:00:00+01:00".into());
+        video.tags = vec!["steak".into(), "grill".into()];
+        video.family_friendly = Some(true);
+        video.restriction = Some({
+            let mut this = RawVideoRestriction::default();
+            this.relationship = Some("allow".into());
+            this.countries = vec!["fr".into(), "BE".into(), "FR".into()];
+            this
+        });
+        video.platform = Some({
+            let mut this = RawVideoPlatform::default();
+            this.relationship = Some("deny".into());
+            this.platforms = vec!["tv".into()];
+            this
+        });
+        video.requires_subscription = Some(false);
+        video.uploader = Some({
+            let mut this = RawVideoUploader::default();
+            this.name = Some("Chef".into());
+            this.info = Some("https://example.com/chef".into());
+            this
+        });
+        video.live = Some(false);
         let (video, codes) = check(video, ValidationOptions::default());
         assert!(codes.is_empty(), "{codes:?}");
         let video = video.unwrap();
@@ -545,29 +538,33 @@ mod tests {
 
     #[test]
     fn every_rule_reports_its_code() {
-        let video = RawVideo {
-            thumbnail_loc: None,
-            title: Some("  ".into()),
-            description: Some("d".repeat(2049)),
-            content_loc: Some("https://example.com/watch".into()),
-            duration: Some(0),
-            rating: Some(5.5),
-            expiration_date: Some("tomorrow".into()),
-            tags: vec!["t".into(); 33],
-            restriction: Some(RawVideoRestriction {
-                relationship: Some("only".into()),
-                countries: vec!["FRA".into()],
-            }),
-            platform: Some(RawVideoPlatform {
-                relationship: Some("allow".into()),
-                platforms: vec!["desktop".into()],
-            }),
-            uploader: Some(RawVideoUploader {
-                name: Some(String::new()),
-                info: None,
-            }),
-            ..RawVideo::default()
-        };
+        let mut video = RawVideo::default();
+        video.thumbnail_loc = None;
+        video.title = Some("  ".into());
+        video.description = Some("d".repeat(2049));
+        video.content_loc = Some("https://example.com/watch".into());
+        video.duration = Some(0);
+        video.rating = Some(5.5);
+        video.expiration_date = Some("tomorrow".into());
+        video.tags = vec!["t".into(); 33];
+        video.restriction = Some({
+            let mut this = RawVideoRestriction::default();
+            this.relationship = Some("only".into());
+            this.countries = vec!["FRA".into()];
+            this
+        });
+        video.platform = Some({
+            let mut this = RawVideoPlatform::default();
+            this.relationship = Some("allow".into());
+            this.platforms = vec!["desktop".into()];
+            this
+        });
+        video.uploader = Some({
+            let mut this = RawVideoUploader::default();
+            this.name = Some(String::new());
+            this.info = None;
+            this
+        });
         let (video, codes) = check(video, ValidationOptions::default());
         assert!(video.is_none());
         for code in [
@@ -589,23 +586,24 @@ mod tests {
     #[test]
     fn location_is_required_and_warnings_keep_the_video() {
         let (_, codes) = check(
-            RawVideo {
-                content_loc: None,
-                ..base_video()
+            {
+                let mut this = base_video();
+                this.content_loc = None;
+                this
             },
             ValidationOptions::default(),
         );
         assert_eq!(codes, ["VIDEO_LOCATION_MISSING"]);
 
-        let video = RawVideo {
-            title: Some("t".repeat(101)),
-            expiration_date: Some("2026-01-01".into()),
-            uploader: Some(RawVideoUploader {
-                name: Some("Chef".into()),
-                info: Some("https://other.example/chef".into()),
-            }),
-            ..base_video()
-        };
+        let mut video = base_video();
+        video.title = Some("t".repeat(101));
+        video.expiration_date = Some("2026-01-01".into());
+        video.uploader = Some({
+            let mut this = RawVideoUploader::default();
+            this.name = Some("Chef".into());
+            this.info = Some("https://other.example/chef".into());
+            this
+        });
         let options = ValidationOptions {
             reference_time: Some(W3cDateTime::parse("2026-11-21T00:00:00Z").unwrap()),
             ..ValidationOptions::default()

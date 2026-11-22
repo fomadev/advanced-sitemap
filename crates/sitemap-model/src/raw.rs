@@ -11,6 +11,7 @@
 #[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[non_exhaustive]
 pub struct RawUrlRecord {
     /// Page URL.
     #[cfg_attr(feature = "serde", serde(alias = "url", default))]
@@ -73,6 +74,7 @@ impl RawUrlRecord {
 #[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[non_exhaustive]
 pub struct RawAlternate {
     /// Language code or `x-default`.
     #[cfg_attr(feature = "serde", serde(default))]
@@ -86,6 +88,7 @@ pub struct RawAlternate {
 #[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[non_exhaustive]
 pub struct RawImage {
     /// Image URL.
     #[cfg_attr(feature = "serde", serde(default))]
@@ -99,6 +102,7 @@ pub struct RawImage {
     feature = "serde",
     serde(deny_unknown_fields, rename_all = "camelCase")
 )]
+#[non_exhaustive]
 pub struct RawVideo {
     /// Thumbnail URL (required).
     #[cfg_attr(
@@ -211,6 +215,7 @@ pub struct RawVideo {
     feature = "serde",
     serde(deny_unknown_fields, rename_all = "camelCase")
 )]
+#[non_exhaustive]
 pub struct RawVideoRestriction {
     /// `allow` or `deny`.
     #[cfg_attr(
@@ -233,6 +238,7 @@ pub struct RawVideoRestriction {
     feature = "serde",
     serde(deny_unknown_fields, rename_all = "camelCase")
 )]
+#[non_exhaustive]
 pub struct RawVideoPlatform {
     /// `allow` or `deny`.
     #[cfg_attr(
@@ -255,6 +261,7 @@ pub struct RawVideoPlatform {
     feature = "serde",
     serde(deny_unknown_fields, rename_all = "camelCase")
 )]
+#[non_exhaustive]
 pub struct RawVideoUploader {
     /// Uploader name.
     #[cfg_attr(
@@ -277,6 +284,7 @@ pub struct RawVideoUploader {
     feature = "serde",
     serde(deny_unknown_fields, rename_all = "camelCase")
 )]
+#[non_exhaustive]
 pub struct RawNews {
     /// Publication (required).
     #[cfg_attr(
@@ -305,6 +313,7 @@ pub struct RawNews {
     feature = "serde",
     serde(deny_unknown_fields, rename_all = "camelCase")
 )]
+#[non_exhaustive]
 pub struct RawNewsPublication {
     /// Publication name, as shown on Google News (required).
     #[cfg_attr(

@@ -25,6 +25,7 @@ pub const MAX_ROBOTS_BYTES: usize = 500 * 1024;
     feature = "serde",
     serde(deny_unknown_fields, rename_all = "camelCase")
 )]
+#[non_exhaustive]
 pub struct RobotsGroup {
     /// Product tokens, or `*` for every crawler.
     pub user_agents: Vec<String>,
@@ -49,6 +50,7 @@ pub struct RobotsGroup {
     feature = "serde",
     serde(deny_unknown_fields, rename_all = "camelCase")
 )]
+#[non_exhaustive]
 pub struct RobotsConfig {
     /// Groups, in output order.
     #[cfg_attr(feature = "serde", serde(default))]

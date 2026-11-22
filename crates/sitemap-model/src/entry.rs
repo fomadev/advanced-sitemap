@@ -2,6 +2,7 @@ use crate::{ChangeFreq, LanguageTag, News, Priority, SitemapUrl, Video, W3cDateT
 
 /// An alternate language version of a page (`<xhtml:link rel="alternate">`).
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct Alternate {
     /// The `hreflang` attribute.
     pub hreflang: LanguageTag,
@@ -9,14 +10,29 @@ pub struct Alternate {
     pub href: SitemapUrl,
 }
 
+impl Alternate {
+    /// The alternate version `href` for language `hreflang`.
+    pub fn new(hreflang: LanguageTag, href: SitemapUrl) -> Self {
+        Self { hreflang, href }
+    }
+}
+
 /// An image attached to a page (`<image:image>`).
 ///
 /// Only `<image:loc>` is modelled: Google stopped using the other image tags
 /// (`caption`, `title`, `geo_location`, `license`) in 2022.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct Image {
     /// The image URL.
     pub loc: SitemapUrl,
+}
+
+impl Image {
+    /// An image at `loc`.
+    pub fn new(loc: SitemapUrl) -> Self {
+        Self { loc }
+    }
 }
 
 /// A validated `<url>` entry.
@@ -25,6 +41,7 @@ pub struct Image {
 /// without further checks. Collection limits (for example at most 1,000
 /// images) are enforced by the validator, not by this type.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct UrlEntry {
     /// `<loc>`
     pub loc: SitemapUrl,
@@ -110,9 +127,17 @@ impl From<SitemapUrl> for UrlEntry {
 
 /// A `<sitemap>` entry of a sitemap index.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct IndexEntry {
     /// Public URL of the child sitemap.
     pub loc: SitemapUrl,
     /// Last modification of the child sitemap.
     pub lastmod: Option<W3cDateTime>,
+}
+
+impl IndexEntry {
+    /// An index entry for the child sitemap at `loc`.
+    pub fn new(loc: SitemapUrl, lastmod: Option<W3cDateTime>) -> Self {
+        Self { loc, lastmod }
+    }
 }

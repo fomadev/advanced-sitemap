@@ -18,6 +18,7 @@ use crate::engine::{EngineConfig, EngineError, InvalidPolicy, PublishPolicy, Sna
 
 /// Where records come from.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum InputSpec {
     /// Records embedded in the configuration document.
     Inline(Vec<serde_json::Value>),
@@ -34,6 +35,7 @@ pub enum InputSpec {
 
 /// A configuration document resolved into engine settings.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct ResolvedConfig {
     /// Engine settings.
     pub engine: EngineConfig,
@@ -43,8 +45,26 @@ pub struct ResolvedConfig {
     pub output_dir: PathBuf,
 }
 
+impl ResolvedConfig {
+    /// Settings `engine`, reading `input` and publishing to `output_dir`.
+    pub fn new(engine: EngineConfig, input: Option<InputSpec>, output_dir: PathBuf) -> Self {
+        ResolvedConfig {
+            engine,
+            input,
+            output_dir,
+        }
+    }
+}
+
 fn config_error(message: impl Into<String>) -> EngineError {
     EngineError::Config(message.into())
+}
+
+/// A setting value the protocol knows but this engine version does not.
+fn unsupported(field: &str, value: impl std::fmt::Debug) -> EngineError {
+    config_error(format!(
+        "{field}: {value:?} is not supported by this engine version"
+    ))
 }
 
 /// Converts a configuration document into engine settings. Relative paths are
@@ -101,6 +121,7 @@ pub fn resolve_config(doc: ConfigDocument, base_dir: &Path) -> Result<ResolvedCo
                 PartitionStrategy::ConsistentHash { partitions }
             }
         }
+        other => return Err(unsupported("partitioning.strategy", other)),
     };
     let limits = PartitionLimits::new(
         doc.partitioning.max_urls.unwrap_or(MAX_URLS_PER_SITEMAP),
@@ -134,18 +155,39 @@ pub fn resolve_config(doc: ConfigDocument, base_dir: &Path) -> Result<ResolvedCo
         }
     };
 
+    let mut validation = ValidationOptions::default();
+    validation.mode = match doc.validation.mode {
+        ValidationModeSetting::Standard => ValidationMode::Standard,
+        ValidationModeSetting::Strict => ValidationMode::Strict,
+        other => return Err(unsupported("validation.mode", other)),
+    };
+    validation.site = site;
+    validation.reference_time = reference_time;
+    let mut layout = Layout::new(doc.output.file_stem);
+    layout.index = match doc.output.index {
+        IndexSetting::Auto => IndexMode::Auto,
+        IndexSetting::Always => IndexMode::Always,
+        IndexSetting::Never => IndexMode::Never,
+        other => return Err(unsupported("output.index", other)),
+    };
+    layout.public_base_url = public_base_url;
+    let mut namespaces = Namespaces::DEFAULT;
+    for extension in &doc.output.extensions {
+        let mut extra = Namespaces::NONE;
+        match extension {
+            ExtensionSetting::Video => extra.video = true,
+            ExtensionSetting::News => extra.news = true,
+            other => return Err(unsupported("output.extensions", other)),
+        }
+        namespaces = namespaces.union(extra);
+    }
+
     let engine = EngineConfig {
-        validation: ValidationOptions {
-            mode: match doc.validation.mode {
-                ValidationModeSetting::Standard => ValidationMode::Standard,
-                ValidationModeSetting::Strict => ValidationMode::Strict,
-            },
-            site,
-            reference_time,
-        },
+        validation,
         on_invalid: match doc.validation.on_invalid {
             InvalidPolicySetting::Fail => InvalidPolicy::Fail,
             InvalidPolicySetting::Skip => InvalidPolicy::Skip,
+            other => return Err(unsupported("validation.onInvalid", other)),
         },
         dedupe: doc.validation.dedupe,
         hreflang_reciprocity: doc.validation.hreflang_reciprocity,
@@ -153,34 +195,14 @@ pub fn resolve_config(doc: ConfigDocument, base_dir: &Path) -> Result<ResolvedCo
             PublishSetting::All => PublishPolicy::All,
             PublishSetting::Changed => PublishPolicy::Changed,
             PublishSetting::Auto => PublishPolicy::Auto,
+            other => return Err(unsupported("output.publish", other)),
         },
         max_diagnostics: doc.validation.max_diagnostics as usize,
         strategy,
         limits,
-        layout: Layout {
-            stem: doc.output.file_stem,
-            index: match doc.output.index {
-                IndexSetting::Auto => IndexMode::Auto,
-                IndexSetting::Always => IndexMode::Always,
-                IndexSetting::Never => IndexMode::Never,
-            },
-            public_base_url,
-        },
+        layout,
         manifest: doc.output.manifest,
-        namespaces: doc
-            .output
-            .extensions
-            .iter()
-            .fold(Namespaces::DEFAULT, |acc, extension| match extension {
-                ExtensionSetting::Video => acc.union(Namespaces {
-                    video: true,
-                    ..Namespaces::NONE
-                }),
-                ExtensionSetting::News => acc.union(Namespaces {
-                    news: true,
-                    ..Namespaces::NONE
-                }),
-            }),
+        namespaces,
         robots: doc.robots,
         snapshot: doc
             .state
@@ -231,6 +253,9 @@ pub fn open_input(
                     BufReader::new(file),
                     DEFAULT_MAX_DOCUMENT_BYTES,
                 )?)),
+                other => Err(EngineError::Config(format!(
+                    "source format {other:?} is not supported by this engine version"
+                ))),
             }
         }
     }

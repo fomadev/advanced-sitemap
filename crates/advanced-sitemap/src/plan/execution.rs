@@ -20,6 +20,7 @@ use super::Quantity;
 /// Unit costs used to estimate a run. Times are for one CPU core of the
 /// reference machine; adjust them to calibrate on other hardware.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct CostModel {
     /// Reading, validating and encoding one record, in microseconds.
     pub pipeline_us_per_url: f64,
@@ -81,6 +82,7 @@ impl Default for CostModel {
 /// One mode considered by the planner.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct Candidate {
     /// `full`, `skip-unchanged`, `delta` or `regenerate`.
     pub mode: &'static str,
@@ -121,6 +123,7 @@ impl Candidate {
 /// The planner's decision.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct ExecutionPlan {
     /// Mode asked for: `full`, `skip-unchanged`, `auto`, or `delta` for a
     /// change feed.

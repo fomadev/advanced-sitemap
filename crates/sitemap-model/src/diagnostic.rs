@@ -4,6 +4,10 @@ use std::fmt;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
+#[allow(
+    clippy::exhaustive_enums,
+    reason = "the report schema v1 defines exactly these severities; another one is a major change"
+)]
 pub enum Severity {
     /// Blocking: the record or the generation cannot be accepted.
     Error,
@@ -41,6 +45,7 @@ macro_rules! diagnostic_codes {
         /// renaming or removing one is a breaking change. Each code is documented
         /// in `docs/concepts/diagnostics.md`.
         #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[non_exhaustive]
         pub enum DiagnosticCode {
             $( $(#[$doc])* $variant, )*
         }
@@ -228,6 +233,7 @@ impl serde::Serialize for DiagnosticCode {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+#[non_exhaustive]
 pub struct Location {
     /// 1-based position of the record in the source.
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -292,6 +298,7 @@ impl fmt::Display for Location {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+#[non_exhaustive]
 pub struct Diagnostic {
     /// Stable code.
     pub code: DiagnosticCode,

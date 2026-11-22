@@ -60,6 +60,7 @@ pub const NEWS_NS: &str = "http://www.google.com/schemas/sitemap-news/0.9";
 
 /// Resource limits applied while reading.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct ReaderLimits {
     /// Maximum uncompressed size in bytes. Default: 50 MiB (protocol limit).
     pub max_bytes: u64,
@@ -81,6 +82,7 @@ impl Default for ReaderLimits {
 
 /// Options of [`inspect`].
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct InspectOptions {
     /// Resource limits.
     pub limits: ReaderLimits,
@@ -104,6 +106,7 @@ impl Default for InspectOptions {
 
 /// Kind of document, from its root element.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DocumentKind {
     /// `<urlset>`
     Urlset,
@@ -126,6 +129,7 @@ impl DocumentKind {
 // by the reader, so the size difference costs nothing worth a Box.
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum Item {
     /// A `<url>` of a `<urlset>`.
     Url(UrlEntry),
@@ -135,6 +139,7 @@ pub enum Item {
 
 /// Result of [`inspect`].
 #[derive(Clone, Debug, Default, PartialEq)]
+#[non_exhaustive]
 pub struct InspectReport {
     /// Kind of document, when the root element was accepted.
     pub kind: Option<DocumentKind>,
@@ -451,10 +456,8 @@ fn namespace_of(resolved: &Resolved<'_>) -> String {
 
 impl<'o, F: FnMut(Item)> State<'o, F> {
     fn new(options: &'o InspectOptions, on_item: F) -> Self {
-        let index_options = ValidationOptions {
-            mode: ValidationMode::Standard,
-            ..options.validation.clone()
-        };
+        let mut index_options = options.validation.clone();
+        index_options.mode = ValidationMode::Standard;
         Self {
             options,
             validator: Validator::new(options.validation.clone()),
@@ -956,7 +959,11 @@ impl<'o, F: FnMut(Item)> State<'o, F> {
                 if let Some(entry) = self.entry.as_mut()
                     && let Some(loc) = entry.image.take()
                 {
-                    entry.raw.images.push(RawImage { loc });
+                    entry.raw.images.push({
+                        let mut this = RawImage::default();
+                        this.loc = loc;
+                        this
+                    });
                 }
             }
             4 if ns == NEWS_NS && local == "publication" => {
@@ -1037,9 +1044,10 @@ impl<'o, F: FnMut(Item)> State<'o, F> {
                     let index = entry.raw.videos.len();
                     let location = Location::record(record, None)
                         .with_field(format!("videos[{index}].{}", video_field.name()));
-                    self.report.diagnostics.push(Diagnostic {
-                        location,
-                        ..diagnostic
+                    self.report.diagnostics.push({
+                        let mut this = diagnostic;
+                        this.location = location;
+                        this
                     });
                 }
             }
@@ -1075,19 +1083,12 @@ impl<'o, F: FnMut(Item)> State<'o, F> {
                 .filter(|_| !read_error)
                 .map(Item::Url),
             DocumentKind::SitemapIndex => {
-                let raw = RawUrlRecord {
-                    loc: entry.raw.loc,
-                    lastmod: entry.raw.lastmod,
-                    ..RawUrlRecord::default()
-                };
+                let mut raw = RawUrlRecord::default();
+                raw.loc = entry.raw.loc;
+                raw.lastmod = entry.raw.lastmod;
                 self.index_validator
                     .validate(&raw, &location, &mut self.report.diagnostics)
-                    .map(|url| {
-                        Item::Sitemap(IndexEntry {
-                            loc: url.loc,
-                            lastmod: url.lastmod,
-                        })
-                    })
+                    .map(|url| Item::Sitemap(IndexEntry::new(url.loc, url.lastmod)))
             }
         };
         let Some(item) = item else {
@@ -1217,21 +1218,27 @@ fn set_video_field(
             }
         }
         VideoField::Restriction => {
-            video.restriction = Some(RawVideoRestriction {
-                relationship: attribute,
-                countries: list(),
+            video.restriction = Some({
+                let mut this = RawVideoRestriction::default();
+                this.relationship = attribute;
+                this.countries = list();
+                this
             });
         }
         VideoField::Platform => {
-            video.platform = Some(RawVideoPlatform {
-                relationship: attribute,
-                platforms: list(),
+            video.platform = Some({
+                let mut this = RawVideoPlatform::default();
+                this.relationship = attribute;
+                this.platforms = list();
+                this
             });
         }
         VideoField::Uploader => {
-            video.uploader = Some(RawVideoUploader {
-                name: text,
-                info: attribute,
+            video.uploader = Some({
+                let mut this = RawVideoUploader::default();
+                this.name = text;
+                this.info = attribute;
+                this
             });
         }
     }

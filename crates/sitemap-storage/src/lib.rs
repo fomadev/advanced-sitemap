@@ -29,6 +29,7 @@ pub struct ArtifactName(String);
 
 /// The name is not a safe artifact name.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct InvalidArtifactName(pub String);
 
 impl fmt::Display for InvalidArtifactName {
@@ -80,6 +81,7 @@ pub trait ArtifactWriter: Write {
 
 /// One step of a publication: move a staged artifact to its public name.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Publication {
     /// Name used when staging.
     pub staged: ArtifactName,
@@ -87,8 +89,16 @@ pub struct Publication {
     pub target: ArtifactName,
 }
 
+impl Publication {
+    /// Moves the artifact staged as `staged` to `target`.
+    pub fn new(staged: ArtifactName, target: ArtifactName) -> Self {
+        Self { staged, target }
+    }
+}
+
 /// Description of a store, for reports.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct StoreDescription {
     /// Store kind, e.g. `local-fs` or `memory`.
     pub kind: &'static str,

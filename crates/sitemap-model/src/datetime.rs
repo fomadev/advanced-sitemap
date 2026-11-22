@@ -30,6 +30,10 @@ pub struct W3cDateTime {
 
 /// The precision of a [`W3cDateTime`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(
+    clippy::exhaustive_enums,
+    reason = "the W3C Datetime profile defines exactly these precisions"
+)]
 pub enum DateTimePrecision {
     /// `YYYY`
     Year,

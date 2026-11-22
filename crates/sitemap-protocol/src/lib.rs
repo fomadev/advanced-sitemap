@@ -41,6 +41,7 @@ pub const REPORT_SCHEMA_VERSION: &str = "1.0";
 
 /// A document cannot be used.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum ProtocolError {
     /// `schemaVersion` is missing, malformed or unsupported.
     UnsupportedVersion(String),
