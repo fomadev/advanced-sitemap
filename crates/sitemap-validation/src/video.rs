@@ -296,6 +296,21 @@ impl Validator {
         let uploader = raw.uploader.as_ref().and_then(|u| {
             let name = u.name.as_deref().map(str::trim).unwrap_or_default();
             let length = name.chars().count();
+            if let Some(ch) = sitemap_model::xml_forbidden_char(name) {
+                self.emit(
+                    out,
+                    error(
+                        DiagnosticCode::VideoUploaderInvalid,
+                        format!(
+                            "video uploader contains U+{:04X}, which XML 1.0 forbids",
+                            u32::from(ch)
+                        ),
+                        "uploader.name",
+                        None,
+                    ),
+                );
+                return None;
+            }
             if name.is_empty() || length > MAX_VIDEO_UPLOADER_CHARS {
                 self.emit(
                     out,
@@ -381,7 +396,24 @@ impl Validator {
                 );
                 None
             }
-            Some(text) => Some(text.to_owned()),
+            Some(text) => match sitemap_model::xml_forbidden_char(text) {
+                Some(ch) => {
+                    self.emit(
+                        out,
+                        Diagnostic::new(
+                            DiagnosticCode::VideoTextInvalid,
+                            format!(
+                                "`{field}` contains U+{:04X}, which XML 1.0 forbids",
+                                u32::from(ch)
+                            ),
+                            location.with_field(field),
+                        )
+                        .with_suggestion("Remove control characters from the text."),
+                    );
+                    None
+                }
+                None => Some(text.to_owned()),
+            },
         }
     }
 

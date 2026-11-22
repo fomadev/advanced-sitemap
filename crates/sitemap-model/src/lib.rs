@@ -23,6 +23,7 @@ mod news;
 mod raw;
 mod scalar;
 mod sitemap_url;
+mod text;
 mod video;
 
 pub use datetime::{DateTimeError, DateTimePrecision, W3cDateTime};
@@ -36,6 +37,7 @@ pub use raw::{
 };
 pub use scalar::{ChangeFreq, ChangeFreqError, Priority, PriorityError};
 pub use sitemap_url::{SitemapUrl, UrlError};
+pub use text::{is_xml_forbidden, xml_forbidden_char};
 pub use video::{
     CountryCode, Platform, Relationship, Video, VideoPlatform, VideoRestriction, VideoUploader,
 };
