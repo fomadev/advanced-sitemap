@@ -23,6 +23,46 @@ use sitemap_storage::{ArtifactName, ArtifactStore, ArtifactWriter, Publication};
 use sitemap_xml::{Namespaces, URLSET_FOOTER, UrlsetWriter, XmlError, encode_url, urlset_header};
 
 pub use fnv::fnv1a64;
+
+/// Digest of a published file: the first 16 bytes of its BLAKE3 hash
+/// (same function as the snapshot's `digest128`).
+pub type FileDigest = [u8; 16];
+
+/// Passes writes through and hashes every byte written (BLAKE3), so that
+/// the digest of a published file is known without reading it back.
+pub struct HashingWriter<W> {
+    inner: W,
+    hasher: blake3::Hasher,
+}
+
+impl<W: io::Write> HashingWriter<W> {
+    /// Wraps `inner`.
+    pub fn new(inner: W) -> Self {
+        Self {
+            inner,
+            hasher: blake3::Hasher::new(),
+        }
+    }
+
+    /// Returns the inner writer and the digest of everything written.
+    pub fn into_parts(self) -> (W, FileDigest) {
+        let mut digest = [0u8; 16];
+        digest.copy_from_slice(&self.hasher.finalize().as_bytes()[..16]);
+        (self.inner, digest)
+    }
+}
+
+impl<W: io::Write> io::Write for HashingWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let n = self.inner.write(buf)?;
+        self.hasher.update(&buf[..n]);
+        Ok(n)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
+}
 pub use jump::jump_consistent_hash;
 
 /// How entries are assigned to partitions.
@@ -155,6 +195,8 @@ pub struct PartitionSummary {
     pub bytes: u64,
     /// Latest `lastmod` of the partition's entries (UTC comparison).
     pub lastmod: Option<W3cDateTime>,
+    /// Digest of the file's bytes, when known.
+    pub digest: Option<FileDigest>,
 }
 
 /// Why an entry could not be placed.
@@ -233,7 +275,7 @@ impl From<io::Error> for PushError {
 struct OpenPartition {
     id: u32,
     name: ArtifactName,
-    writer: UrlsetWriter<Box<dyn ArtifactWriter>>,
+    writer: UrlsetWriter<HashingWriter<Box<dyn ArtifactWriter>>>,
     lastmod: Option<W3cDateTime>,
     /// `<news:news>` elements written.
     news: u32,
@@ -242,7 +284,8 @@ struct OpenPartition {
 impl OpenPartition {
     fn close(self) -> Result<PartitionSummary, PushError> {
         let urls = self.writer.urls();
-        let (artifact, bytes) = self.writer.finish()?;
+        let (hashing, bytes) = self.writer.finish()?;
+        let (artifact, digest) = hashing.into_parts();
         let stored = artifact.finish()?;
         debug_assert_eq!(stored, bytes);
         Ok(PartitionSummary {
@@ -251,6 +294,7 @@ impl OpenPartition {
             urls,
             bytes,
             lastmod: self.lastmod,
+            digest: Some(digest),
         })
     }
 }
@@ -391,7 +435,7 @@ impl<'s> Partitioner<'s> {
     fn open(&mut self, id: u32) -> Result<OpenPartition, PushError> {
         let name = partition_name(&self.stem, id)?;
         let artifact = self.store.create(&name)?;
-        let writer = UrlsetWriter::new(artifact, self.namespaces)?;
+        let writer = UrlsetWriter::new(HashingWriter::new(artifact), self.namespaces)?;
         Ok(OpenPartition {
             id,
             name,
@@ -962,6 +1006,7 @@ mod tests {
             urls: 1,
             bytes: 100,
             lastmod: None,
+            digest: None,
         }
     }
 

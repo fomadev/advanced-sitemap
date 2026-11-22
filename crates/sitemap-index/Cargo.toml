@@ -12,6 +12,7 @@ publish.workspace = true
 sitemap-model.workspace = true
 sitemap-xml.workspace = true
 sitemap-storage.workspace = true
+blake3.workspace = true
 
 [lints]
 workspace = true
