@@ -391,3 +391,78 @@ fn skip_unchanged_leaves_identical_files_untouched() {
     assert_eq!(unchanged(&third), 0);
     assert_ne!(mtime("sitemap-1.xml"), before);
 }
+
+#[test]
+fn diff_compares_published_directories() {
+    let temp = TempDir::new("diff");
+    let old = temp.0.join("old");
+    let new = temp.0.join("new");
+    fs::create_dir_all(&old).unwrap();
+    fs::create_dir_all(&new).unwrap();
+    let head = r#"<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">"#;
+    fs::write(
+        old.join("sitemap.xml"),
+        format!("{head}<url><loc>https://example.com/a</loc></url><url><loc>https://example.com/b</loc><lastmod>2026-01-01</lastmod></url></urlset>"),
+    )
+    .unwrap();
+    // Same `a` (different formatting), `b` modified, `c` added, split in two files.
+    fs::write(
+        new.join("sitemap-1.xml"),
+        format!("{head}\n  <url>\n    <loc> https://example.com/a </loc>\n  </url>\n</urlset>"),
+    )
+    .unwrap();
+    fs::write(
+        new.join("sitemap-2.xml"),
+        format!("{head}<url><loc>https://example.com/b</loc><lastmod>2026-02-01</lastmod></url><url><loc>https://example.com/c</loc></url></urlset>"),
+    )
+    .unwrap();
+
+    let output = bin()
+        .args(["--format", "json", "diff"])
+        .arg(&old)
+        .arg(&new)
+        .output()
+        .unwrap();
+    assert_eq!(
+        code(&output),
+        0,
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report = json(&output);
+    assert_eq!(report["status"], "different");
+    let c = &report["changes"];
+    assert_eq!(
+        (
+            c["added"].as_u64(),
+            c["removed"].as_u64(),
+            c["modified"].as_u64(),
+            c["unchanged"].as_u64()
+        ),
+        (Some(1), Some(0), Some(1), Some(1))
+    );
+    assert_eq!(c["addedUrls"][0], "https://example.com/c");
+    assert_eq!(c["modifiedUrls"][0], "https://example.com/b");
+    assert_eq!(report["new"]["files"].as_array().unwrap().len(), 2);
+
+    let strict = bin()
+        .args(["diff", "--fail-on-change"])
+        .arg(&old)
+        .arg(&new)
+        .output()
+        .unwrap();
+    assert_eq!(code(&strict), 1);
+    let same = bin()
+        .args(["diff", "--fail-on-change"])
+        .arg(&old)
+        .arg(&old)
+        .output()
+        .unwrap();
+    assert_eq!(code(&same), 0);
+    let empty = temp.0.join("empty");
+    fs::create_dir_all(&empty).unwrap();
+    assert_eq!(
+        code(&bin().arg("diff").arg(&old).arg(&empty).output().unwrap()),
+        2
+    );
+}
