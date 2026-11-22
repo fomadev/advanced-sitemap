@@ -794,6 +794,19 @@ fn print_plan(plan: &Plan, format: Format) {
     if let Some(n) = p.suggested_partitions {
         println!("  Suggested parts    {n} (hash strategies, 20% headroom)");
     }
+    if let Some(m) = &plan.migration {
+        println!(
+            "  Previous run       {} URLs in {} partitions{}",
+            m.previous_urls,
+            m.previous_partitions,
+            if m.config_changed {
+                ", settings changed"
+            } else {
+                ""
+            }
+        );
+        println!("  URLs changing file {}", m.moved);
+    }
     println!("  Output layout      {}", plan.output_layout);
     println!("  Output directory   {}", plan.output_directory);
     for note in &plan.notes {

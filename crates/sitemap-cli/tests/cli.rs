@@ -466,3 +466,73 @@ fn diff_compares_published_directories() {
         2
     );
 }
+
+#[test]
+fn explain_measures_migration_cost_from_the_snapshot() {
+    let temp = TempDir::new("migration");
+    let input = temp.0.join("urls.jsonl");
+    let lines: String = (0..500)
+        .map(|i| format!("{{\"loc\":\"https://example.com/p/{i}\"}}\n"))
+        .collect();
+    fs::write(&input, lines).unwrap();
+    let config = temp.0.join("config.json");
+    fs::write(
+        &config,
+        r#"{"schemaVersion": "1.1", "publicBaseUrl": "https://example.com/",
+            "partitioning": {"strategy": "consistent-hash", "partitions": 4},
+            "source": {"path": "urls.jsonl"}, "output": {"directory": "out"},
+            "state": {"directory": "state"}}"#,
+    )
+    .unwrap();
+    let run = |command: &str, extra: &[&str]| {
+        let output = bin()
+            .args(["--format", "json", command, "--config"])
+            .arg(&config)
+            .args(extra)
+            .output()
+            .unwrap();
+        assert_eq!(
+            code(&output),
+            0,
+            "{command} {extra:?}: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        json(&output)
+    };
+    // No snapshot yet: no migration section.
+    assert!(run("explain", &[]).get("migration").is_none());
+    run("generate", &[]);
+
+    let same = run("explain", &[]);
+    let m = &same["migration"];
+    assert_eq!(m["previousUrls"], 500);
+    assert_eq!(m["previousPartitions"], 4);
+    assert_eq!(m["configChanged"], false);
+    assert_eq!(
+        m["moved"],
+        serde_json::json!({"kind": "measured", "value": 0})
+    );
+
+    // N -> N+1 with jump hash: about 1/5 of the URLs move.
+    let grown = run("explain", &["--partitions", "5"]);
+    assert_eq!(grown["migration"]["configChanged"], true);
+    let moved = grown["migration"]["moved"]["value"].as_u64().unwrap();
+    assert!((60..=140).contains(&moved), "{moved}");
+    let notes = grown["notes"].to_string();
+    assert!(notes.contains("PARTITION_MIGRATION_COST"), "{notes}");
+
+    // Switching to stable-hash moves almost everything.
+    let switched = run(
+        "explain",
+        &["--strategy", "stable-hash", "--partitions", "5"],
+    );
+    assert!(switched["migration"]["moved"]["value"].as_u64().unwrap() > 300);
+
+    // A tight URL limit is flagged from the previous URLs.
+    let tight = run("explain", &["--max-urls", "130"]);
+    assert!(
+        tight["notes"]
+            .to_string()
+            .contains("PARTITION_HEADROOM_LOW")
+    );
+}
