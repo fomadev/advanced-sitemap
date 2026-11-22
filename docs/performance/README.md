@@ -179,6 +179,34 @@ upserts and 20 % deletes, applied one after the other:
   100- and 10,000-operation runs peaked at 293 to 300 MiB (24 partitions)
   and 273 MiB (1,000 partitions).
 
+## Execution planner estimates
+
+The planner's cost model (`CostModel::REFERENCE`) is calibrated on the runs
+above. Checked on 1 M URLs (sorted, `consistent-hash`, `--state-dir`),
+two series each, after calibration:
+
+| Run | Estimated | Measured |
+|---|---|---|
+| `generate`, 24 partitions | 19.7 s | 15.1 and 16.9 s |
+| `generate`, 1,000 partitions | 44.1 s | 37.3 and 39.5 s |
+| Rerun without changes (`auto`) | 7.3 s | 7.3 to 8.9 s |
+| `apply`, 1 operation | 3.3 to 4.0 s | 3.4 to 5.5 s |
+| `apply`, 100 operations, 24 / 1,000 partitions | 21.1 / 7.3 s | 22.0 to 25.0 / 7.3 to 9.5 s |
+| `apply`, 10,000 operations, 24 / 1,000 partitions | 21.1 / 45.5 s | 21.4 to 22.7 / 42.2 to 44.5 s |
+
+- Full generations are overestimated by 12 to 30 % (the calibration run
+  of 16.3 s was slower than today's runs on the same machine); the other
+  estimates fall inside the measured range or within about 20 %.
+- The decisions were consistent with the measurements: for 100 operations
+  over 24 partitions and 10,000 over 1,000, the planner recommends
+  regenerating. A full generation from the source took 15 to 17 s and 37
+  to 40 s, against 21 to 25 s and 42 to 45 s for `apply` (the regeneration
+  itself, with only some files changed, was not timed separately).
+- Lot B costs nothing measurable: same binary before and after, four
+  alternated runs each, median 7.1 s for both on the unchanged rerun and
+  3.6 s against 3.7 s for `apply` with one operation (hashing the files
+  for the manifest digests is included).
+
 ## hreflang reciprocity
 
 `validate` on the 1 M URL dataset (100,000 entries with 2 alternates, so
