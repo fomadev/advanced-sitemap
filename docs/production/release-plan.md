@@ -13,8 +13,8 @@ explicite du propriétaire du projet.
 | B | Planner automatique, modèle de coût, `explain` lié à l'état, repli sûr ; lien snapshot ↔ publication (R5) | `--execution-mode auto`, plan avec jeton d'état | Fait (PR #17) |
 | C | Profilage, allocations, 10 M d'URL, bornes de ressources (flux `apply`) | Mesures avant/après | Fait (PR #18) |
 | D | Fuzzing (lecteur XML, protocole, snapshot, flux, URL), `cargo audit`, Actions épinglées | Cibles `cargo fuzz` et corpus ; `security-report.md` | Fait (PR #19) |
-| E | API Rust stable (`#[non_exhaustive]`, constructeurs, erreurs typées), CLI (`doctor`), règles de configuration | `semver-policy.md` | Fait (cette PR) |
-| F | Tests interplateformes (ARM), conformité, documentation, version candidate | Notes de version, artefacts, sommes de contrôle | À faire |
+| E | API Rust stable (`#[non_exhaustive]`, constructeurs, erreurs typées), CLI (`doctor`), règles de configuration | `semver-policy.md` | Fait (PR #23) |
+| F | Tests interplateformes (ARM), conformité, documentation, version candidate | `release-readiness.md`, `final-audit.md`, workflow `Release candidate` | Fait (cette PR) |
 
 ## 2. Décisions attendues du propriétaire
 
@@ -29,26 +29,31 @@ explicite du propriétaire du projet.
 
 ## 3. Conditions de sortie (release gate)
 
-Une version n'est déclarée prête que si toutes sont vraies :
+Une version n'est déclarée prête que si toutes sont vraies. Leur état au
+lot F est dans [release-readiness.md](release-readiness.md) : toutes sont
+remplies sauf la licence et l'approbation des formats.
 
-- [ ] Aucun P0 ni P1 ouvert (aujourd'hui : R10, R17, R18, R19 ouverts)
-- [ ] Tests et CI verts sur les plateformes annoncées
-- [ ] Conformité XML vérifiée par des outils indépendants (fait en CI)
-- [ ] Tests de reprise après interruption (en partie fait, lot A)
+- [x] Aucun P0 ni P1 technique ouvert (R18 et R19 sont des décisions)
+- [x] Tests et CI verts sur les plateformes annoncées (5, ARM64 compris)
+- [x] Conformité XML vérifiée par des outils indépendants
+- [x] Tests de reprise après interruption (pannes injectées, arrêts brutaux)
 - [x] Fuzzing exécuté, corpus de régression conservé (lot D)
-- [ ] Performance mesurée sur les volumes annoncés
-- [ ] Documentation cohérente avec le code
-- [ ] Licence finalisée
-- [ ] Formats persistants versionnés et politique de migration écrite
-- [ ] Aucun secret dans les artefacts
-- [ ] Aucun défaut connu de corruption ou de publication incohérente
+- [x] Performance mesurée sur les volumes annoncés (jusqu'à 10 M)
+- [x] Documentation cohérente avec le code
+- [ ] Licence finalisée (R19)
+- [x] Formats persistants versionnés et politique de compatibilité écrite
+- [x] Aucun secret dans les artefacts
+- [x] Aucun défaut connu de corruption ou de publication incohérente
+  (l'ensemble mixte R2 est documenté, détecté et réparé)
+- [ ] ADR-0010 à 0013 approuvés (R18)
 
 ## 4. Version candidate (prévue)
 
 - Numérotation : `0.x` jusqu'à la stabilisation de l'API ; `1.0.0-rc.1`
   seulement quand la section 3 est remplie.
-- Artefacts : binaires CLI Windows x64, Linux x64, macOS ARM64 ;
-  sommes SHA-256 ; construction reproductible par la CI (`--locked`).
+- Artefacts : binaires CLI pour 7 cibles (workflow `Release candidate`,
+  voir [release-readiness.md](release-readiness.md)) ; sommes SHA-256 ;
+  construction par la CI (`--locked`).
 - Retour arrière : les formats persistants étant versionnés, revenir à
   une version antérieure coûte au pire une génération complète (snapshot
   ignoré si inconnu).
