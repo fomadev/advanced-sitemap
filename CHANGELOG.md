@@ -6,7 +6,24 @@ contain breaking changes.
 
 ## [Unreleased]
 
+### Changed (breaking for Rust callers)
+
+- Lot E (API): exported structs with public fields and enums that can grow
+  are `#[non_exhaustive]`. Build them with their constructors
+  (`UrlEntry::new`, `Video::new` / `Video::with_player`, `Layout::new`,
+  `SourceRecord::new`, `ResolvedConfig::new`...) or with `Default` and
+  field assignments; end a `match` on them with `_`. The compatibility
+  policy is in `docs/production/semver-policy.md`.
+
 ### Added
+
+- Lot E: `advanced-sitemap doctor` and `Engine::doctor`, a read-only check
+  of the output and state directories (running process, interrupted run,
+  published files against the manifest by size and digest, snapshot
+  freshness, state token). `EngineError::kind` (the stable `error.kind` of
+  the CLI), `EngineError::is_retryable`, and `source()` on the engine,
+  sitemap and protocol errors. Configuration rules documented in
+  `docs/cli`. Diagnostic codes frozen by a test.
 
 - Lot D (security): reproducible fuzzing on stable Rust (`tests/fuzz.rs`,
   snapshot decoder) run with the tests and longer in CI, coverage-guided
