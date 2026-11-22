@@ -106,7 +106,7 @@ Chaque phase est utile seule, mesurée, et protégée par l'oracle I1.
 |---|---|---|---|
 | A (**faite**, voir ci-dessous) | Ne publier que les fichiers dont les octets changent, par comparaison avec le fichier publié | Moins d'écritures disque et un `lastmod` d'index stable | `generate` relancé sans changement : 0 fichier publié ; durée égale à `validate` |
 | B (**faite**) | Snapshot par URL (clé et contenu), Diff Engine, rapport de changements | Liste exacte des ajouts, retraits et modifications | Comparaison avec les changements connus du test |
-| C | Stratégie `consistent-hash` (ADR-0012) et planner qui chiffre les déplacements | Agrandir le site sans déplacer la plupart des URL | Fraction d'URL déplacées mesurée contre 1/(N+1) |
+| C (**faite**) | Stratégie `consistent-hash` (ADR-0012) et planner qui chiffre les déplacements | Agrandir le site sans déplacer la plupart des URL | Fraction d'URL déplacées mesurée contre 1/(N+1) |
 | D | Flux de changements (ajouts, mises à jour, suppressions) appliqués sur les fichiers publiés (ADR-0013) | Plus besoin de relire toute la source | Oracle I1 entre application du flux et régénération complète |
 
 La phase A ne demande aucun nouveau format d'entrée et ne change aucun
@@ -146,6 +146,20 @@ contrat existant.
   bornée, réencodage canonique, même tri externe et même diff. Le test
   d'aller-retour exact exigé par l'ADR-0013 (relire puis réencoder redonne
   les octets du générateur) passe sur toutes les fixtures.
+
+### Phase C : ce qui a été fait (2026-11-22)
+
+- Stratégie `consistent-hash` (jump hash sur `fnv1a64(loc)`), figée par des
+  vecteurs de test, disponible dans le protocole et la CLI.
+- `explain` lit le snapshot précédent et compte exactement les URL qui
+  changeraient de fichier, et signale une partition trop remplie (nombre
+  d'URL seulement).
+- Mesure de validation : de 24 à 25 partitions à 1 M d'URL, 4,0 % d'URL
+  déplacées (1/(N+1) = 4 %), contre 96,0 % avec `stable-hash` ; la
+  prédiction d'`explain` est égale au rapport de `generate`.
+- Limite : tous les anciens fichiers sont réécrits lors de
+  l'agrandissement. Les réserves en octets et en news ne sont pas encore
+  mesurées (le snapshot ne garde pas les tailles).
 
 ## 5. Questions ouvertes (à mesurer avant de trancher)
 

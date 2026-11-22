@@ -76,6 +76,11 @@ limites : URL, octets, et news (1 000 par fichier). Il signale :
 | `PARTITION_COUNT_SUGGESTED` | info | Nombre de partitions conseillé pour revenir à 80 % de remplissage |
 | `PARTITION_MIGRATION_COST` | info | Pour un changement de N ou de stratégie : nombre exact d'URL qui changeront de fichier, calculé sur les clés du snapshot (pas une estimation) |
 
+État (2026-11-22) : `PARTITION_MIGRATION_COST` et `PARTITION_HEADROOM_LOW`
+(sur le nombre d'URL) sont émis par `explain` comme notes, avec une section
+`migration` structurée. Les réserves en octets et en news, et
+`PARTITION_COUNT_SUGGESTED` à partir du snapshot, restent à faire.
+
 Le coût de migration est exact parce que le snapshot de niveau URL contient
 la clé de chaque URL et que l'affectation par hachage est déterministe : il
 suffit de recalculer `jump(fnv1a64(loc), N')` ou `fnv1a64(loc) mod N'`. Sans

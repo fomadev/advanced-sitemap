@@ -8,6 +8,13 @@ contain breaking changes.
 
 ### Added
 
+- Phase C of the Lifecycle Engine: `consistent-hash` partitioning strategy
+  (jump consistent hash over FNV-1a 64, frozen by test vectors). Growing
+  from N to N+1 partitions moves about 1/(N+1) of the URLs.
+- `explain` gains a `migration` section when a previous snapshot exists:
+  exact count of URLs changing file for hash strategies, notes
+  `PARTITION_MIGRATION_COST` and `PARTITION_HEADROOM_LOW`.
+
 - CLI `diff OLD NEW`: compares two sets of published sitemaps (files or
   directories) after canonical re-encoding, with bounded memory, exact
   counts, URL lists and `--fail-on-change`. Facade module
@@ -74,6 +81,10 @@ contain breaking changes.
   cost for staged files that are never published.
 - `ArtifactReport` gains `unchanged`; `EngineConfig` gains `publish`;
   `OutputSection` gains `publish`.
+- `PartitionStrategy` gains `ConsistentHash` (exhaustive matches must add
+  it), `StrategySetting` gains `ConsistentHash`, `Plan` gains `migration`.
+  `PushError` messages say "hash partition" instead of "stable-hash
+  partition".
 - `EngineConfig` gains `snapshot`, `ConfigDocument` gains `state`,
   `GenerationReport` gains `changes`, `Partitioner` gains `last_block`.
 - `UrlEntry` has a new `videos` field and `Namespaces` a new `video` field:
