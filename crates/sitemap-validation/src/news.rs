@@ -68,21 +68,19 @@ impl Validator {
                 }
             },
         };
-        if let (Some(date), Some(reference)) = (&publication_date, &self.options.reference_time) {
-            if reference.unix_seconds() - date.unix_seconds() > NEWS_MAX_AGE_SECONDS {
-                self.emit(
-                    out,
-                    Diagnostic::new(
-                        DiagnosticCode::NewsTooOld,
-                        "article is older than two days; Google News only uses recent articles",
-                        location.with_field("news.publicationDate"),
-                    )
-                    .with_value(date.as_str())
-                    .with_suggestion(
-                        "Remove the news metadata (or the URL) from the news sitemap.",
-                    ),
-                );
-            }
+        if let (Some(date), Some(reference)) = (&publication_date, &self.options.reference_time)
+            && reference.unix_seconds() - date.unix_seconds() > NEWS_MAX_AGE_SECONDS
+        {
+            self.emit(
+                out,
+                Diagnostic::new(
+                    DiagnosticCode::NewsTooOld,
+                    "article is older than two days; Google News only uses recent articles",
+                    location.with_field("news.publicationDate"),
+                )
+                .with_value(date.as_str())
+                .with_suggestion("Remove the news metadata (or the URL) from the news sitemap."),
+            );
         }
 
         let title = self.news_text(news.title.as_deref(), location, "news.title", out);

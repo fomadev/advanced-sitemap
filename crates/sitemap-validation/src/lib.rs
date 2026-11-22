@@ -269,19 +269,19 @@ impl Validator {
     }
 
     fn check_future(&self, date: &W3cDateTime, location: &Location, out: &mut Vec<Diagnostic>) {
-        if let Some(reference) = &self.options.reference_time {
-            if date.cmp_instant(reference).is_gt() {
-                self.emit(
-                    out,
-                    Diagnostic::new(
-                        DiagnosticCode::LastmodInFuture,
-                        format!("lastmod is later than the reference time {reference}"),
-                        location.with_field("lastmod"),
-                    )
-                    .with_value(date.as_str())
-                    .with_suggestion("Check the source clock or time zone of this date."),
-                );
-            }
+        if let Some(reference) = &self.options.reference_time
+            && date.cmp_instant(reference).is_gt()
+        {
+            self.emit(
+                out,
+                Diagnostic::new(
+                    DiagnosticCode::LastmodInFuture,
+                    format!("lastmod is later than the reference time {reference}"),
+                    location.with_field("lastmod"),
+                )
+                .with_value(date.as_str())
+                .with_suggestion("Check the source clock or time zone of this date."),
+            );
         }
     }
 
@@ -327,39 +327,40 @@ impl Validator {
                 Some(value) => self.parse_url(value, location, &href_field, out),
             };
 
-            if let Some(tag) = &tag {
-                if !seen_tags.insert(tag.clone()) {
-                    self.emit(
-                        out,
-                        Diagnostic::new(
-                            DiagnosticCode::HreflangDuplicate,
-                            format!("hreflang {tag} is listed more than once for this URL"),
-                            location.with_field(&tag_field),
-                        )
-                        .with_value(tag.as_str())
-                        .with_suggestion("Keep a single alternate per language code."),
-                    );
-                }
+            if let Some(tag) = &tag
+                && !seen_tags.insert(tag.clone())
+            {
+                self.emit(
+                    out,
+                    Diagnostic::new(
+                        DiagnosticCode::HreflangDuplicate,
+                        format!("hreflang {tag} is listed more than once for this URL"),
+                        location.with_field(&tag_field),
+                    )
+                    .with_value(tag.as_str())
+                    .with_suggestion("Keep a single alternate per language code."),
+                );
             }
             if let (Some(hreflang), Some(href)) = (tag, href) {
                 alternates.push(Alternate { hreflang, href });
             }
         }
 
-        if let Some(loc) = loc {
-            if !alternates.is_empty() && !alternates.iter().any(|alt| alt.href == *loc) {
-                self.emit(
-                    out,
-                    Diagnostic::new(
-                        DiagnosticCode::AlternateSelfMissing,
-                        "the URL has alternates but does not list itself among them",
-                        location.with_field("alternates"),
-                    )
-                    .with_suggestion(
-                        "Add an alternate whose href is the page URL with its own language code.",
-                    ),
-                );
-            }
+        if let Some(loc) = loc
+            && !alternates.is_empty()
+            && !alternates.iter().any(|alt| alt.href == *loc)
+        {
+            self.emit(
+                out,
+                Diagnostic::new(
+                    DiagnosticCode::AlternateSelfMissing,
+                    "the URL has alternates but does not list itself among them",
+                    location.with_field("alternates"),
+                )
+                .with_suggestion(
+                    "Add an alternate whose href is the page URL with its own language code.",
+                ),
+            );
         }
         alternates
     }

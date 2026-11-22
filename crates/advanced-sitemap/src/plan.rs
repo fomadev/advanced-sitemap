@@ -355,13 +355,13 @@ pub fn explain(resolved: &ResolvedConfig, sample_size: usize) -> Result<Plan, En
         None => None,
     };
     if let Some(m) = &migration {
-        if let Quantity::Measured(moved) = m.moved {
-            if moved > 0 {
-                notes.push(format!(
+        if let Quantity::Measured(moved) = m.moved
+            && moved > 0
+        {
+            notes.push(format!(
                     "PARTITION_MIGRATION_COST: {moved} of the {} previously published URLs would change file",
                     m.previous_urls
                 ));
-            }
         }
         if let Some(fullest) = m.fullest_partition_urls {
             let limit = u64::from(config.limits.max_urls());
