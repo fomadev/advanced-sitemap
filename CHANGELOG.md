@@ -6,6 +6,14 @@ contain breaking changes.
 
 ## [Unreleased]
 
+### Changed
+
+- Snapshot I/O is hashed and copied in 64 KiB blocks (same format): the
+  `--state-dir` overhead at 1 M URLs fell from 4 to 5.5 s to 3.0 to 3.4 s,
+  and `apply` with one operation from about 5 s to 3.3 s. `apply` merges
+  the unchanged records of the previous snapshot instead of sorting them
+  again (`SnapshotBuilder::finish_merged`).
+
 ### Added
 
 - Phase D of the Lifecycle Engine, the delta mode: `ChangeRecord` feed

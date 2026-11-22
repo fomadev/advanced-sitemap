@@ -89,7 +89,7 @@ already published, and `validate` at 5 M:
 
 | Run | Without snapshot | With snapshot |
 |---|---|---|
-| 1 M, rerun without changes | 3.9 to 4.7 s, 57 MiB | 8.6 to 10.3 s, 111 MiB |
+| 1 M, rerun without changes | 3.3 s, 57 MiB (3.9 to 4.7 s before) | 6.3 to 6.7 s, 111 MiB (8.6 to 10.3 s before) |
 | 5 M, `validate` (snapshot built and compared, not kept) | 18.4 s, 210 MiB | 35.5 s, 246 MiB |
 
 - The snapshot takes 44.8 MB at 1 M URLs (about 45 bytes per URL, after
@@ -98,10 +98,25 @@ already published, and `validate` at 5 M:
 - Memory is bounded by the sort budget (64 MiB by default): at 5 M URLs
   the peak grows by 36 MiB only, because sorted runs are spilled to the
   state directory (invariant I8).
-- The extra time is disk I/O on this slow drive: sorted runs, the new
-  snapshot (synced before its rename), and reading both snapshots for the
-  diff. Hashing costs about 6 % (ADR-0011). Not optimized yet; the option
-  is off by default.
+- The extra time fell from 4 to 5.5 s to 3.0 to 3.4 s at 1 M URLs once
+  the snapshot was hashed and copied in 64 KiB blocks instead of record by
+  record (same format). Per stage, on 1 M records
+  (`cargo run --release -p sitemap-snapshot --example snapshot_stages`):
+
+  | Stage | Before | After |
+  |---|---|---|
+  | Read a snapshot | 0.61 to 0.70 s | 0.26 s |
+  | Diff two snapshots | 0.99 to 1.87 s | 0.54 to 0.56 s |
+  | Push, sort and spill | 0.6 to 0.8 s | unchanged |
+  | Merge and write | 0.85 to 0.94 s | unchanged |
+  | Sync before the rename | 1.1 to 1.7 s | unchanged |
+
+- What remains is mostly the sync of the new snapshot (32 to 45 MB on this
+  slow drive) and the sort. The sync is kept: without it, a crash right
+  after a publication could leave an older, valid snapshot, which makes
+  the next change report inaccurate and the next `apply` refuse. A
+  damaged snapshot is always detected by its checksum. The option is off
+  by default.
 
 ## Comparing two published sets (`diff`)
 
@@ -142,7 +157,7 @@ upserts and 20 % deletes, applied one after the other:
 | | 24 partitions (50,000 URLs max) | 1,000 partitions (2,000 URLs max) |
 |---|---|---|
 | Full `generate` | 16.5 to 16.8 s, 117 MiB | 37.5 to 41.3 s, 287 MiB |
-| `apply`, 1 operation | 4.9 to 6.5 s, 95 MiB | 4.6 to 5.4 s, 94 MiB |
+| `apply`, 1 operation | 3.3 to 3.4 s, 50 MiB (4.9 to 6.5 s, 95 MiB before) | 4.6 to 5.4 s, 94 MiB (measured before) |
 | `apply`, 100 operations | 24.8 s, 126 MiB (all 24 partitions touched) | 9.2 to 11.1 s, 95 MiB |
 | `apply`, 10,000 operations | 20.5 s, 133 MiB | 49.6 to 54.2 s, 117 MiB |
 
@@ -151,9 +166,11 @@ upserts and 20 % deletes, applied one after the other:
   from JSON Lines; a feed that touches every partition is slower than a
   full `generate` (use `generate --skip-unchanged` then). Many small
   partitions make feeds touch a smaller share of the site.
-- **Fixed cost:** about 4.5 s at 1 M URLs, almost all snapshot I/O (two
-  reads of the old snapshot, the new one sorted, synced and compared), as
-  for `--state-dir` (see above). Not optimized yet.
+- **Fixed cost:** about 3.3 s at 1 M URLs (4.5 s before), almost all
+  snapshot I/O. The unchanged records are now merged from the previous
+  snapshot, already sorted, instead of being read a second time, sorted
+  and spilled again. The 100-operation run at 24 partitions went from
+  24.8 s to 21.1 s.
 - **Checked at this scale:** after the three feeds (997,988 URLs left), the
   26 published files were byte for byte those of a full `generate` from
   the same final URLs.

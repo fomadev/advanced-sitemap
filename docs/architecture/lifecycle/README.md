@@ -174,7 +174,9 @@ contrat existant.
   génération complète à 1 M d'URL ; un flux qui touche toutes les
   partitions est plus lent qu'une génération complète.
 - Reste à faire : choix automatique entre `delta` et `skip-unchanged` par
-  le planner, et réduction du coût fixe du snapshot (environ 4,5 s).
+  le planner. Le coût fixe du snapshot est passé d'environ 4,5 s à 3,3 s
+  (lecture et écriture par blocs, fusion au lieu d'un nouveau tri) ; le
+  reste est surtout la synchronisation du nouveau snapshot, conservée.
 
 ## 5. Questions ouvertes (à mesurer avant de trancher)
 
