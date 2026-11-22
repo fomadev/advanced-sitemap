@@ -22,18 +22,56 @@ jobs:
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
   test:
+    # x86_64 and ARM64 on Linux, Windows and macOS (macos-latest is ARM64).
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, windows-11-arm, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install pinned toolchain
         run: rustup toolchain install
+      - name: Platform
+        shell: bash
+        run: rustc -vV | grep -E "^(host|release)"
       - run: cargo test --workspace --locked
       - name: Build release CLI
         run: cargo build --release -p sitemap-cli --locked
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Determinism digests
+        shell: bash
+        run: |
+          cargo run --release --locked -q -p advanced-sitemap --example make_dataset -- 20000 determinism/data.jsonl
+          python tools/determinism.py "target/release/advanced-sitemap${{ runner.os == 'Windows' && '.exe' || '' }}" determinism/data.jsonl determinism/work > determinism-${{ matrix.os }}.txt
+          wc -l determinism-${{ matrix.os }}.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: determinism-${{ matrix.os }}
+          path: determinism-${{ matrix.os }}.txt
+
+  determinism:
+    # Every platform must publish the same bytes for the same input and
+    # settings, after a full generation and after an apply.
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: determinism-*
+          merge-multiple: true
+      - name: Compare
+        run: |
+          ls determinism-*.txt
+          reference=determinism-ubuntu-latest.txt
+          test "$(wc -l < "$reference")" -gt 10
+          status=0
+          for file in determinism-*.txt; do
+            if ! diff -u "$reference" "$file"; then status=1; fi
+          done
+          exit $status
 
   msrv:
     # The minimum supported Rust version declared in Cargo.toml
