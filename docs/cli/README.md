@@ -214,8 +214,11 @@ The feed is JSON Lines
   `"kind": "delta-refused"`; run a full `generate` instead.
 - `--dry-run` checks and reports without publishing. Invalid operations
   follow `validation.onInvalid`, as source records do.
-- Memory: the feed is held in memory (one entry per changed URL), plus one
-  partition at a time.
+- Memory: the feed is held in memory (about 800 bytes per changed URL,
+  measured), plus one partition at a time. A feed changing more than
+  `state.maxFeedOperations` distinct URLs (default 500,000, about 400 MB)
+  is refused before anything is written; raise it with
+  `--max-operations N`, split the feed, or regenerate.
 
 ## Concurrent runs
 

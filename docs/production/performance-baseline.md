@@ -14,7 +14,7 @@ monothread. Ce sont des ordres de grandeur, pas des garanties.
 | 100 000 URL | Oui (Criterion) | pipeline |
 | 1 000 000 URL | Oui | `validate`, `generate`, `--skip-unchanged`, `--state-dir`, `inspect`, `diff`, `apply` |
 | 5 000 000 URL | Oui | `validate`, `generate`, `--skip-unchanged`, `--state-dir` (validate) |
-| 10 000 000 URL | **Non** | — |
+| 10 000 000 URL | Oui (lot C) | `validate`, `generate`, relances `auto` avec et sans snapshot, `explain` |
 | 50 000 000 URL | **Non** | Taille du snapshot extrapolée : environ 2,2 Go |
 
 ## Chiffres clés
@@ -42,7 +42,15 @@ monothread. Ce sont des ordres de grandeur, pas des garanties.
   (1,1 à 1,7 s à 1 M sur ce disque), conservée volontairement.
 - `apply` n'est intéressant que si le flux touche peu de partitions.
 
+## Lot C
+
+- 10 M d'URL : `generate` 80,8 s et 415 Mio ; `validate --no-dedupe`
+  5 Mio ; snapshot 448 Mo et +46 Mio. Détail dans `docs/performance`.
+- Allocations par étape mesurées (`tools/alloc-profile`) : 5,7 par URL
+  pour `validate`, 806 octets par opération de flux.
+- Modèle de coût recalibré sur une série homogène.
+
 ## Non mesuré
 
-Allocations, octets lus et écrits par étape, disques SSD/NVMe, machines
-multicœurs, Linux et macOS (les mesures sont toutes sous Windows).
+Octets lus et écrits par étape, disques SSD/NVMe, machines multicœurs,
+Linux et macOS (les mesures sont toutes sous Windows), 50 M d'URL.

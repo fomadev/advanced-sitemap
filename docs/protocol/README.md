@@ -52,6 +52,7 @@ JSON Schemas (draft 2020-12) are in [`schemas/`](../../schemas).
 | `robots` | none | Since 1.1. Publishes `robots.txt` next to the sitemaps (see below) |
 | `state.directory` | none | Since 1.1. Keeps a URL-level snapshot (`<stem>.snapshot`) there and adds `changes` to the report. Relative to the configuration file; keep it out of the public output directory |
 | `state.maxListed` | `1000` | URLs listed per change kind in `changes` (counts stay exact) |
+| `state.maxFeedOperations` | `500000` | Distinct URLs one `apply` may change; the feed is held in memory (about 800 bytes per URL), a larger feed is refused before writing |
 
 ### robots.txt (since 1.1)
 
