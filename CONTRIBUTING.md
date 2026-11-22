@@ -31,6 +31,8 @@ cargo test --workspace
 This project is source-available under the
 [Fordima Public License v1.0](LICENSE). As stated in its Section 2, by
 opening a Pull Request you agree that your contribution is released under
-the same license and may be integrated into the official project. The
-contribution terms may be clarified in a future version of the license (see
-[docs/legal/fpl-review.md](docs/legal/fpl-review.md)).
+the same license and may be integrated into the official project. How
+contributions may also be included in commercial licenses is still to be
+decided (a clause or a contributor agreement); external Pull Requests are
+not merged until it is (see
+[docs/legal/fpl-review.md](docs/legal/fpl-review.md), section 8).
