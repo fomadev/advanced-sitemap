@@ -204,6 +204,10 @@ struct StreamOutcome {
     /// `None` when writing stopped (fail policy or structural error).
     partitions: Option<Vec<PartitionSummary>>,
     snapshot: Option<SnapshotBuilder>,
+    /// Partitions kept as published, without a staged file (delta mode).
+    reused: Vec<PartitionSummary>,
+    /// Skip staged artifacts identical to the published ones.
+    compare_with_published: bool,
 }
 
 type Completed = (
@@ -311,6 +315,18 @@ impl Engine {
                 return Err(error);
             }
         };
+        self.finish_run(outcome, store, mode, description)
+    }
+
+    /// Writes the index, manifest and snapshot, publishes or discards, and
+    /// builds the report.
+    fn finish_run(
+        &self,
+        outcome: StreamOutcome,
+        store: &mut dyn ArtifactStore,
+        mode: RunMode,
+        description: sitemap_storage::StoreDescription,
+    ) -> Result<GenerationReport, EngineError> {
         match self.complete(outcome, store, mode) {
             Ok((status, stats, mut collector, artifacts, snapshot)) => {
                 let changes = match snapshot {
@@ -533,6 +549,8 @@ impl Engine {
             collector,
             partitions,
             snapshot,
+            reused: Vec::new(),
+            compare_with_published: self.config.publish == PublishPolicy::Changed,
         })
     }
 
@@ -548,6 +566,8 @@ impl Engine {
             mut collector,
             partitions,
             snapshot,
+            reused,
+            compare_with_published,
         } = outcome;
         let failed_status = match mode {
             RunMode::Publish => RunStatus::Failed,
@@ -555,13 +575,19 @@ impl Engine {
         };
         let blocked = self.config.on_invalid == InvalidPolicy::Fail && collector.has_errors();
 
-        let partitions = match partitions {
+        let mut partitions = match partitions {
             Some(partitions) if !blocked => partitions,
             _ => {
                 store.discard()?;
                 return Ok((failed_status, stats, collector, Vec::new(), None));
             }
         };
+        let reused_names: HashSet<String> = reused
+            .iter()
+            .map(|p| p.staged_name.as_str().to_owned())
+            .collect();
+        partitions.extend(reused);
+        partitions.sort_by_key(|p| p.id);
 
         if stats.urls_written == 0 {
             collector.push(
@@ -605,11 +631,13 @@ impl Engine {
             .map(|(publication, partition)| ArtifactReport {
                 name: publication.target.as_str().to_owned(),
                 kind: ArtifactKind::Sitemap,
-                unchanged: false,
+                unchanged: reused_names.contains(publication.staged.as_str()),
                 entries: Some(partition.urls),
                 bytes: partition.bytes,
             })
             .collect();
+        // Reused partitions have no staged file: they stay as published.
+        publications.retain(|p| !reused_names.contains(p.staged.as_str()));
 
         if let Some((name, entries)) = &plan.index {
             let writer = store.create(name)?;
@@ -729,13 +757,16 @@ impl Engine {
             });
         }
 
-        if mode == RunMode::Publish && self.config.publish == PublishPolicy::Changed {
-            // `publications[i]` describes `artifacts[i]`: both are built in
-            // the same order above.
+        if mode == RunMode::Publish && compare_with_published {
             let mut kept = Vec::with_capacity(publications.len());
-            for (publication, artifact) in publications.into_iter().zip(artifacts.iter_mut()) {
+            for publication in publications {
                 if store.staged_matches_published(&publication.staged, &publication.target)? {
-                    artifact.unchanged = true;
+                    if let Some(artifact) = artifacts
+                        .iter_mut()
+                        .find(|a| a.name == publication.target.as_str())
+                    {
+                        artifact.unchanged = true;
+                    }
                 } else {
                     kept.push(publication);
                 }
