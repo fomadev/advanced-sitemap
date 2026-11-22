@@ -134,6 +134,19 @@ enum Command {
         #[arg(long)]
         deny_warnings: bool,
     },
+    /// Check the output and state directories against the configuration:
+    /// running process, interrupted run, published files against the
+    /// manifest, snapshot freshness. Writes nothing.
+    Doctor {
+        #[command(flatten)]
+        common: CommonArgs,
+        /// Output directory to check (overrides output.directory).
+        #[arg(long, short)]
+        out: Option<PathBuf>,
+        /// Exit with code 1 when warnings are reported.
+        #[arg(long)]
+        deny_warnings: bool,
+    },
     /// Read and check existing sitemap or sitemap index files (plain or gzip). Writes nothing.
     Inspect(InspectArgs),
     /// Compare two sets of published sitemaps (files or directories). Writes nothing.
@@ -585,6 +598,20 @@ fn main() -> ExitCode {
             let report = run_apply(&resolved, &changes, mode)?;
             Ok(finish_report("apply", &report, format, deny_warnings))
         }),
+        Command::Doctor {
+            common,
+            out,
+            deny_warnings,
+        } => load_config(&common, out.as_deref()).and_then(|resolved| {
+            let engine = Engine::new(resolved.engine)?;
+            let report = engine.doctor(&resolved.output_dir);
+            print_doctor(&report, format);
+            if report.has_errors() || (deny_warnings && report.has_warnings()) {
+                Ok(ExitCode::from(EXIT_FAILED))
+            } else {
+                Ok(ExitCode::SUCCESS)
+            }
+        }),
         Command::Inspect(args) => run_inspect(&args, format),
         Command::Diff(args) => run_diff(&args, format),
     };
@@ -978,6 +1005,45 @@ fn print_plan(plan: &Plan, format: Format) {
     print_execution(&plan.execution);
     for note in &plan.notes {
         println!("  Note               {note}");
+    }
+}
+
+fn print_doctor(report: &advanced_sitemap::DoctorReport, format: Format) {
+    match format {
+        Format::Json => {
+            let status = if report.has_errors() {
+                "error"
+            } else if report.has_warnings() {
+                "warning"
+            } else {
+                "ok"
+            };
+            let value = serde_json::json!({
+                "schemaVersion": "1.0",
+                "engineVersion": advanced_sitemap::ENGINE_VERSION,
+                "command": "doctor",
+                "status": status,
+                "checks": report.checks,
+                "stateToken": report.state_token,
+            });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&value).unwrap_or_default()
+            );
+        }
+        Format::Human => {
+            println!("advanced-sitemap doctor (nothing is written)");
+            for check in &report.checks {
+                let status = check.status.as_str();
+                println!("  {status:<8} {:<17} {}", check.name, check.message);
+                if let Some(suggestion) = &check.suggestion {
+                    println!("  {:<8} {:<17} {suggestion}", "", "");
+                }
+            }
+            if let Some(token) = &report.state_token {
+                println!("  state token: {token}");
+            }
+        }
     }
 }
 
