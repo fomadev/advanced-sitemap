@@ -52,6 +52,22 @@ fuzzé change. Une entrée qui fait planter une cible est publiée comme
 artefact du job. Ces cibles demandent Rust nightly et libFuzzer : elles ne
 sont pas exécutées sur la machine de développement.
 
+Première campagne (CI, 2026-11-22, 60 secondes par cible, depuis les
+corpus de départ), sans aucun plantage :
+
+| Cible | Exécutions | Arêtes couvertes | Corpus final |
+|---|---|---|---|
+| `change_feed` | 1 374 026 | 1 252 | 1 925 |
+| `config` | 2 799 169 | 3 866 | 2 254 |
+| `scalars` | 1 600 899 | 2 408 | 1 775 |
+| `snapshot` | 536 687 | 412 | 78 |
+| `url_record` | 1 064 901 | 5 709 | 2 740 |
+| `xml_reader` | 480 754 | 5 036 | 1 658 |
+
+Les corpus enrichis par une campagne ne sont pas réintégrés
+automatiquement au dépôt : seules les entrées qui font échouer une cible
+doivent l'être, comme tests de régression.
+
 ## 3. Attaques XML
 
 | Attaque | Comportement | Preuve |
