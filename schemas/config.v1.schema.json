@@ -213,6 +213,25 @@
           "description": "Absolute URLs added as Sitemap records."
         }
       }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "directory"
+      ],
+      "description": "URL-level snapshot and change report (since 1.1).",
+      "properties": {
+        "directory": {
+          "type": "string",
+          "description": "Relative to the configuration file; keep it out of the public output directory."
+        },
+        "maxListed": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 1000
+        }
+      }
     }
   },
   "not": {

@@ -16,7 +16,7 @@ use std::process::ExitCode;
 use advanced_sitemap::inspect::{FileInspection, inspect_file, inspect_reader};
 use advanced_sitemap::plan::{Plan, explain};
 use advanced_sitemap::protocol::{
-    IndexSetting, InvalidPolicySetting, SourceFormat, SourceSection, StrategySetting,
+    IndexSetting, InvalidPolicySetting, SourceFormat, SourceSection, StateSection, StrategySetting,
     ValidationModeSetting,
 };
 use advanced_sitemap::{
@@ -142,6 +142,9 @@ struct CommonArgs {
     /// Check hreflang return links across entries (about 110 bytes per link).
     #[arg(long)]
     hreflang_reciprocity: bool,
+    /// State directory for the URL snapshot and the change report (state.directory).
+    #[arg(long)]
+    state_dir: Option<PathBuf>,
     /// Maximum diagnostics listed in the report.
     #[arg(long)]
     max_diagnostics: Option<u32>,
@@ -285,6 +288,12 @@ fn load(common: &CommonArgs, out: Option<&Path>) -> Result<ResolvedConfig, Failu
     }
     if common.hreflang_reciprocity {
         doc.validation.hreflang_reciprocity = true;
+    }
+    if let Some(dir) = &common.state_dir {
+        doc.state = Some(StateSection {
+            directory: absolute(dir)?.to_string_lossy().into_owned(),
+            max_listed: doc.state.as_ref().and_then(|s| s.max_listed),
+        });
     }
     if let Some(max) = common.max_diagnostics {
         doc.validation.max_diagnostics = max;
@@ -594,6 +603,26 @@ fn print_report(command: &str, report: &GenerationReport) {
                 }
             );
         }
+    }
+    if let Some(c) = &report.changes {
+        let base = if c.previous_snapshot {
+            "since the previous snapshot"
+        } else {
+            "first snapshot"
+        };
+        println!(
+            "  Changes      {} added, {} removed, {} modified, {} moved, {} unchanged ({base}{})",
+            c.added,
+            c.removed,
+            c.modified,
+            c.moved,
+            c.unchanged,
+            if c.config_changed {
+                ", settings changed"
+            } else {
+                ""
+            }
+        );
     }
     print_diagnostics(&report.severity_counts, &report.diagnostics);
 }

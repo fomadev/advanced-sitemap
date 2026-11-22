@@ -3,72 +3,256 @@
   "$id": "https://github.com/fomadev/advanced-sitemap/schemas/report.v1.schema.json",
   "title": "Advanced Sitemap run report, protocol 1.0",
   "type": "object",
-  "required": ["schemaVersion", "engineVersion", "status", "stats", "artifacts", "store", "severityCounts", "diagnosticCounts", "diagnostics"],
+  "required": [
+    "schemaVersion",
+    "engineVersion",
+    "status",
+    "stats",
+    "artifacts",
+    "store",
+    "severityCounts",
+    "diagnosticCounts",
+    "diagnostics"
+  ],
   "properties": {
-    "schemaVersion": { "const": "1.0" },
-    "engineVersion": { "type": "string" },
-    "status": { "enum": ["published", "failed", "valid", "invalid"] },
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "engineVersion": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "published",
+        "failed",
+        "valid",
+        "invalid"
+      ]
+    },
     "stats": {
       "type": "object",
-      "required": ["records", "validRecords", "invalidRecords", "duplicates", "urlsWritten"],
+      "required": [
+        "records",
+        "validRecords",
+        "invalidRecords",
+        "duplicates",
+        "urlsWritten"
+      ],
       "properties": {
-        "records": { "type": "integer" },
-        "validRecords": { "type": "integer" },
-        "invalidRecords": { "type": "integer" },
-        "duplicates": { "type": "integer" },
-        "urlsWritten": { "type": "integer" }
+        "records": {
+          "type": "integer"
+        },
+        "validRecords": {
+          "type": "integer"
+        },
+        "invalidRecords": {
+          "type": "integer"
+        },
+        "duplicates": {
+          "type": "integer"
+        },
+        "urlsWritten": {
+          "type": "integer"
+        }
       }
     },
     "artifacts": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "kind", "bytes", "unchanged"],
+        "required": [
+          "name",
+          "kind",
+          "bytes",
+          "unchanged"
+        ],
         "properties": {
-          "name": { "type": "string" },
-          "kind": { "enum": ["sitemap", "index", "manifest", "robots"] },
-          "entries": { "type": "integer" },
-          "bytes": { "type": "integer" },
-          "unchanged": { "type": "boolean", "description": "The published file already had these bytes and was not rewritten" }
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "sitemap",
+              "index",
+              "manifest",
+              "robots"
+            ]
+          },
+          "entries": {
+            "type": "integer"
+          },
+          "bytes": {
+            "type": "integer"
+          },
+          "unchanged": {
+            "type": "boolean",
+            "description": "The published file already had these bytes and was not rewritten"
+          }
         }
       }
     },
     "store": {
       "type": "object",
-      "required": ["kind", "location", "atomicPerArtifact", "atomicSet"],
+      "required": [
+        "kind",
+        "location",
+        "atomicPerArtifact",
+        "atomicSet"
+      ],
       "properties": {
-        "kind": { "enum": ["local-fs", "memory", "null"] },
-        "location": { "type": "string" },
-        "atomicPerArtifact": { "type": "boolean" },
-        "atomicSet": { "type": "boolean" }
+        "kind": {
+          "enum": [
+            "local-fs",
+            "memory",
+            "null"
+          ]
+        },
+        "location": {
+          "type": "string"
+        },
+        "atomicPerArtifact": {
+          "type": "boolean"
+        },
+        "atomicSet": {
+          "type": "boolean"
+        }
       }
     },
     "severityCounts": {
       "type": "object",
-      "required": ["error", "warning", "recommendation", "info"],
-      "additionalProperties": { "type": "integer" }
+      "required": [
+        "error",
+        "warning",
+        "recommendation",
+        "info"
+      ],
+      "additionalProperties": {
+        "type": "integer"
+      }
     },
-    "diagnosticCounts": { "type": "object", "additionalProperties": { "type": "integer" } },
+    "diagnosticCounts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer"
+      }
+    },
     "diagnostics": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["code", "severity", "message", "location"],
+        "required": [
+          "code",
+          "severity",
+          "message",
+          "location"
+        ],
         "properties": {
-          "code": { "type": "string", "pattern": "^[A-Z_]+$" },
-          "severity": { "enum": ["error", "warning", "recommendation", "info"] },
-          "message": { "type": "string" },
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Z_]+$"
+          },
+          "severity": {
+            "enum": [
+              "error",
+              "warning",
+              "recommendation",
+              "info"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
           "location": {
             "type": "object",
             "properties": {
-              "record": { "type": "integer" },
-              "line": { "type": "integer" },
-              "field": { "type": "string" },
-              "artifact": { "type": "string" }
+              "record": {
+                "type": "integer"
+              },
+              "line": {
+                "type": "integer"
+              },
+              "field": {
+                "type": "string"
+              },
+              "artifact": {
+                "type": "string"
+              }
             }
           },
-          "value": { "type": "string" },
-          "suggestion": { "type": "string" }
+          "value": {
+            "type": "string"
+          },
+          "suggestion": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "changes": {
+      "type": "object",
+      "description": "Present when state.directory is set (since 1.1).",
+      "required": [
+        "previousSnapshot",
+        "configChanged",
+        "added",
+        "removed",
+        "modified",
+        "moved",
+        "unchanged",
+        "partitionsTouched",
+        "addedUrls",
+        "removedUrls",
+        "modifiedUrls",
+        "truncated"
+      ],
+      "properties": {
+        "previousSnapshot": {
+          "type": "boolean"
+        },
+        "configChanged": {
+          "type": "boolean"
+        },
+        "added": {
+          "type": "integer"
+        },
+        "removed": {
+          "type": "integer"
+        },
+        "modified": {
+          "type": "integer"
+        },
+        "moved": {
+          "type": "integer"
+        },
+        "unchanged": {
+          "type": "integer"
+        },
+        "partitionsTouched": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "addedUrls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "removedUrls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "modifiedUrls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "truncated": {
+          "type": "boolean"
         }
       }
     }

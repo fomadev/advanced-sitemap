@@ -41,6 +41,22 @@ pub struct ConfigDocument {
     /// robots.txt to publish with the sitemaps (since 1.1).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub robots: Option<sitemap_robots::RobotsConfig>,
+    /// URL-level snapshot and change report (since 1.1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<StateSection>,
+}
+
+/// Where the engine keeps its state between runs.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct StateSection {
+    /// State directory, relative to the configuration file. Keep it out of
+    /// the public output directory.
+    pub directory: String,
+    /// URLs listed per change kind in the report (counts stay exact).
+    /// Default 1000.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_listed: Option<u32>,
 }
 
 impl ConfigDocument {
@@ -57,6 +73,7 @@ impl ConfigDocument {
             source: None,
             urls: None,
             robots: None,
+            state: None,
         }
     }
 
