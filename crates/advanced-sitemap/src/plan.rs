@@ -15,7 +15,11 @@ use sitemap_validation::{ValidationMode, Validator};
 use sitemap_xml::{URLSET_FOOTER, encode_url, urlset_header};
 
 use crate::config::{InputSpec, ResolvedConfig, open_input};
-use crate::engine::{EngineError, InvalidPolicy};
+use crate::engine::{Engine, EngineError, InvalidPolicy};
+
+mod execution;
+
+pub use execution::{Candidate, CostModel, ExecutionPlan};
 
 /// A number with its provenance.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -43,7 +47,8 @@ impl std::fmt::Display for Quantity {
 }
 
 impl Quantity {
-    fn value(self) -> Option<u64> {
+    /// The number, whatever its provenance; `None` when unknown.
+    pub fn value(self) -> Option<u64> {
         match self {
             Quantity::Measured(v) | Quantity::Estimated(v) | Quantity::Configured(v) => Some(v),
             Quantity::Unknown => None,
@@ -151,6 +156,9 @@ pub struct Plan {
     /// readable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub migration: Option<MigrationPlan>,
+    /// Execution mode the run would use, the modes considered and their
+    /// estimated costs.
+    pub execution: ExecutionPlan,
     /// Observations and warnings.
     pub notes: Vec<String>,
 }
@@ -159,8 +167,55 @@ pub struct Plan {
 /// table overhead). An approximation, reported as an estimate.
 const DEDUPE_BYTES_PER_URL: u64 = 32;
 
-/// Builds a plan, sampling at most `sample_size` records. No artifact is written.
+/// Builds a plan, sampling at most `sample_size` records, with the
+/// reference cost model. No artifact is written.
 pub fn explain(resolved: &ResolvedConfig, sample_size: usize) -> Result<Plan, EngineError> {
+    explain_with(resolved, sample_size, &CostModel::REFERENCE)
+}
+
+/// Plans an `apply` of `changes` without writing anything: validates the
+/// feed, finds the partitions it touches, checks every precondition of the
+/// delta mode, and compares its cost with regenerating from the source.
+pub fn explain_apply<I>(
+    resolved: &ResolvedConfig,
+    changes: I,
+    model: &CostModel,
+) -> Result<ExecutionPlan, EngineError>
+where
+    I: IntoIterator<
+        Item = std::io::Result<sitemap_protocol::SourceRecord<sitemap_protocol::ChangeRecord>>,
+    >,
+{
+    let engine = Engine::new(resolved.engine.clone())?;
+    let store = sitemap_storage::FsStore::new(&resolved.output_dir);
+    let plan = engine.plan_delta(changes, &store)?;
+    let url_bytes = plan
+        .touched_bytes
+        .checked_div(plan.touched_urls)
+        .unwrap_or(170);
+    let facts = execution::DeltaFacts {
+        source_available: resolved.input.is_some(),
+        url_bytes,
+        snapshot_budget: resolved
+            .engine
+            .snapshot
+            .as_ref()
+            .map_or(0, |s| s.memory_budget as u64),
+        plan,
+    };
+    Ok(execution::plan_apply(
+        &facts,
+        model,
+        engine.state_token(&store)?,
+    ))
+}
+
+/// Like [`explain`], with another cost model.
+pub fn explain_with(
+    resolved: &ResolvedConfig,
+    sample_size: usize,
+    model: &CostModel,
+) -> Result<Plan, EngineError> {
     let config = &resolved.engine;
     let mut notes = Vec::new();
 
@@ -381,6 +436,28 @@ pub fn explain(resolved: &ResolvedConfig, sample_size: usize) -> Result<Plan, En
         Quantity::Measured(0)
     };
 
+    let engine = Engine::new(config.clone())?;
+    let store = sitemap_storage::FsStore::new(&resolved.output_dir);
+    let facts = execution::Facts {
+        urls: valid_quantity,
+        url_bytes: sample.average_url_bytes,
+        input_bytes: bytes,
+        files,
+        published: engine.previous_publication_exists(&store)?,
+        snapshot: config.snapshot.is_some(),
+        snapshot_budget: config
+            .snapshot
+            .as_ref()
+            .map_or(0, |s| s.memory_budget as u64),
+        dedupe: config.dedupe,
+    };
+    let execution = execution::plan_generate(
+        &facts,
+        config.publish.mode_name(),
+        model,
+        engine.state_token(&store)?,
+    );
+
     Ok(Plan {
         input: InputPlan {
             source,
@@ -410,6 +487,7 @@ pub fn explain(resolved: &ResolvedConfig, sample_size: usize) -> Result<Plan, En
         output_layout,
         output_directory: resolved.output_dir.display().to_string(),
         migration,
+        execution,
         notes,
     })
 }
