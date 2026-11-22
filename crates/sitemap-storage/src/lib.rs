@@ -133,8 +133,83 @@ pub trait ArtifactStore {
         Ok(false)
     }
 
+    /// Takes exclusive use of the destination for the rest of the run, so
+    /// that two processes never publish to it at the same time. The engine
+    /// calls it before reading or writing anything. Returns an error of kind
+    /// [`io::ErrorKind::WouldBlock`] when another process holds it. The
+    /// default does nothing (stores private to one process).
+    fn lock(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+
     /// Describes the store and its guarantees.
     fn describe(&self) -> StoreDescription;
+}
+
+// ---------------------------------------------------------------------------
+// Directory lock
+// ---------------------------------------------------------------------------
+
+/// An exclusive lock on a directory, held by an open lock file.
+///
+/// It uses the operating system's advisory file locks, which are released
+/// when the process exits for any reason: a crash never leaves a stale lock.
+/// Only processes that take the lock are excluded; other programs writing
+/// to the directory are not.
+#[derive(Debug)]
+pub struct DirectoryLock {
+    _file: File,
+    path: PathBuf,
+}
+
+impl DirectoryLock {
+    /// Takes the lock `<dir>/<name>` without waiting, creating the directory
+    /// and the file if needed. Fails with [`io::ErrorKind::WouldBlock`] when
+    /// another process (or another handle) holds it.
+    pub fn acquire(dir: &Path, name: &str) -> io::Result<Self> {
+        fs::create_dir_all(dir)?;
+        let path = dir.join(name);
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&path)?;
+        match file.try_lock() {
+            Ok(()) => Ok(Self { _file: file, path }),
+            Err(fs::TryLockError::WouldBlock) => Err(io::Error::new(
+                io::ErrorKind::WouldBlock,
+                format!(
+                    "{} is locked by another advanced-sitemap process; retry when it has finished",
+                    dir.display()
+                ),
+            )),
+            Err(fs::TryLockError::Error(error)) => Err(error),
+        }
+    }
+
+    /// Path of the lock file.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+/// Name of the lock file [`FsStore`] keeps in its output directory.
+pub const LOCK_FILE: &str = ".advanced-sitemap.lock";
+
+/// Makes the renames done in `dir` durable (Unix: `fsync` of the directory).
+/// On Windows, directory entries cannot be synced this way; this does
+/// nothing there.
+pub fn sync_dir(dir: &Path) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        File::open(dir)?.sync_all()?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = dir;
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -159,6 +234,9 @@ pub struct FsStore {
     /// Staged artifacts found identical to the published file of the same
     /// name while being written: no staging file exists for them.
     identical: Arc<Mutex<HashSet<ArtifactName>>>,
+    /// Held from `lock` until the store is dropped (declared last: it is
+    /// released after the staging directory is cleaned up).
+    lock: Option<DirectoryLock>,
 }
 
 impl FsStore {
@@ -170,7 +248,32 @@ impl FsStore {
             staged: Vec::new(),
             compare: false,
             identical: Arc::new(Mutex::new(HashSet::new())),
+            lock: None,
         }
+    }
+
+    /// Removes staging directories left by processes that stopped before
+    /// publishing or discarding. Only called with the lock held: every
+    /// process that writes here takes it first, so these are all stale.
+    fn remove_stale_staging(&self) -> io::Result<usize> {
+        let entries = match fs::read_dir(&self.root) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(0),
+            Err(error) => return Err(error),
+        };
+        let mut removed = 0;
+        for entry in entries {
+            let entry = entry?;
+            let name = entry.file_name();
+            let stale = name.to_str().is_some_and(|n| n.starts_with(STAGING_PREFIX))
+                && entry.file_type()?.is_dir()
+                && self.staging.as_deref() != Some(entry.path().as_path());
+            if stale {
+                fs::remove_dir_all(entry.path())?;
+                removed += 1;
+            }
+        }
+        Ok(removed)
     }
 
     /// The output directory.
@@ -399,6 +502,10 @@ impl ArtifactStore for FsStore {
                 .sync_all()?;
             fs::rename(staged, self.root.join(step.target.as_str()))?;
         }
+        if !plan.is_empty() {
+            // Make the renames themselves durable (Unix).
+            sync_dir(&self.root)?;
+        }
         // Remaining staged files (not in the plan) and the staging directory.
         self.cleanup_staging()
     }
@@ -409,6 +516,16 @@ impl ArtifactStore for FsStore {
 
     fn set_compare_with_published(&mut self, enabled: bool) {
         self.compare = enabled;
+    }
+
+    /// Takes `<root>/.advanced-sitemap.lock`, then removes staging
+    /// directories left by interrupted runs. Calling it again is a no-op.
+    fn lock(&mut self) -> io::Result<()> {
+        if self.lock.is_none() {
+            self.lock = Some(DirectoryLock::acquire(&self.root, LOCK_FILE)?);
+            self.remove_stale_staging()?;
+        }
+        Ok(())
     }
 
     fn staged_matches_published(
@@ -1012,5 +1129,59 @@ mod tests {
         w.finish().unwrap();
         store.discard().unwrap();
         assert_eq!(handle.published().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn lock_excludes_a_second_store_until_the_first_is_dropped() {
+        let tmp = TempDir::new("lock");
+        let mut first = FsStore::new(&tmp.0);
+        first.lock().unwrap();
+        first.lock().unwrap(); // idempotent
+        let mut second = FsStore::new(&tmp.0);
+        let error = second.lock().unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::WouldBlock);
+        assert!(error.to_string().contains("locked"), "{error}");
+        drop(first);
+        second.lock().unwrap();
+        // The lock file is hidden: never an artifact name.
+        assert!(ArtifactName::new(LOCK_FILE).is_err());
+    }
+
+    #[test]
+    fn lock_removes_staging_left_by_an_interrupted_run() {
+        let tmp = TempDir::new("stale");
+        let stale = tmp.0.join(format!("{STAGING_PREFIX}99999-0"));
+        fs::create_dir_all(&stale).unwrap();
+        fs::write(stale.join("sitemap-1.xml"), b"partial").unwrap();
+        fs::write(tmp.0.join("sitemap.xml"), b"published").unwrap();
+        let mut store = FsStore::new(&tmp.0);
+        store.lock().unwrap();
+        assert!(!stale.exists());
+        assert_eq!(fs::read(tmp.0.join("sitemap.xml")).unwrap(), b"published");
+        // A store's own staging directory is kept until it publishes.
+        let mut writer = store.create(&name("a.xml")).unwrap();
+        writer.write_all(b"x").unwrap();
+        writer.finish().unwrap();
+        store
+            .publish(&[Publication {
+                staged: name("a.xml"),
+                target: name("a.xml"),
+            }])
+            .unwrap();
+        assert_eq!(fs::read(tmp.0.join("a.xml")).unwrap(), b"x");
+    }
+
+    #[test]
+    fn directory_lock_reports_its_path() {
+        let tmp = TempDir::new("dirlock");
+        let lock = DirectoryLock::acquire(&tmp.0.join("state"), "sitemap.lock").unwrap();
+        assert!(lock.path().ends_with("sitemap.lock"));
+        assert_eq!(
+            DirectoryLock::acquire(&tmp.0.join("state"), "sitemap.lock")
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::WouldBlock
+        );
+        sync_dir(&tmp.0).unwrap();
     }
 }
