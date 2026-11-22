@@ -428,6 +428,26 @@ impl<'s> Partitioner<'s> {
         Ok(self.closed)
     }
 
+    /// Closes a hash partition now instead of at [`finish`], to release its
+    /// buffers. Pushing to it again would start the file over, so only
+    /// callers that route each partition's entries together (the delta
+    /// mode) use it. Does nothing for `Sequential` or an unopened partition.
+    ///
+    /// [`finish`]: Partitioner::finish
+    pub fn close_partition(&mut self, partition: u32) -> Result<(), PushError> {
+        if self.strategy.hash_partitions().is_none() {
+            return Ok(());
+        }
+        let slot = partition.checked_sub(1).map(|s| s as usize);
+        if let Some(open) = slot
+            .and_then(|s| self.slots.get_mut(s))
+            .and_then(Option::take)
+        {
+            self.closed.push(open.close()?);
+        }
+        Ok(())
+    }
+
     /// The store, for reading published artifacts between pushes.
     pub fn store(&self) -> &dyn ArtifactStore {
         &*self.store
@@ -843,6 +863,32 @@ mod tests {
         let tight = PartitionLimits::new(100, MAX_SITEMAP_BYTES).unwrap();
         let (overflow, _) = run(strategy, tight, 1000);
         assert!(matches!(overflow, Err(PushError::PartitionFull { .. })));
+    }
+
+    #[test]
+    fn closing_a_partition_early_keeps_it_in_the_result() {
+        let strategy = PartitionStrategy::ConsistentHash {
+            partitions: NonZeroU32::new(3).unwrap(),
+        };
+        let store = MemoryStore::new();
+        let mut handle = store.clone();
+        let mut partitioner = Partitioner::new(
+            &mut handle,
+            strategy,
+            PartitionLimits::default(),
+            Namespaces::NONE,
+            "s",
+        );
+        let mut placed = Vec::new();
+        for i in 0..30 {
+            placed.push(partitioner.push(&entry(i)).unwrap());
+        }
+        partitioner.close_partition(placed[0]).unwrap();
+        partitioner.close_partition(99).unwrap(); // unknown: ignored
+        let parts = partitioner.finish_partial().unwrap();
+        assert_eq!(parts.len(), 3);
+        assert_eq!(parts.iter().map(|p| p.urls).sum::<u64>(), 30);
+        assert!(parts.windows(2).all(|w| w[0].id < w[1].id));
     }
 
     #[test]
