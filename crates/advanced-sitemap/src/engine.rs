@@ -222,7 +222,42 @@ impl fmt::Display for EngineError {
     }
 }
 
-impl std::error::Error for EngineError {}
+impl EngineError {
+    /// Stable machine-readable name of the error, as written in the `kind`
+    /// field of the CLI's JSON error output: `config`, `io`, `internal`,
+    /// `delta-refused`, `busy` or `state-changed`. A new variant may add a
+    /// name; an existing name never changes meaning.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            EngineError::Config(_) | EngineError::Protocol(_) => "config",
+            EngineError::Io(_) => "io",
+            EngineError::Xml(_) => "internal",
+            EngineError::DeltaRefused(_) => "delta-refused",
+            EngineError::Busy(_) => "busy",
+            EngineError::StateChanged { .. } => "state-changed",
+        }
+    }
+
+    /// Whether running again later, unchanged, may succeed: another process
+    /// held the directories, or the published state moved after planning.
+    pub fn is_retryable(&self) -> bool {
+        matches!(
+            self,
+            EngineError::Busy(_) | EngineError::StateChanged { .. }
+        )
+    }
+}
+
+impl std::error::Error for EngineError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            EngineError::Io(error) => Some(error),
+            EngineError::Protocol(error) => Some(error),
+            EngineError::Xml(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 
 impl From<io::Error> for EngineError {
     fn from(error: io::Error) -> Self {

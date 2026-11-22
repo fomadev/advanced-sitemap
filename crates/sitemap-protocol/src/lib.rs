@@ -69,7 +69,14 @@ impl fmt::Display for ProtocolError {
     }
 }
 
-impl std::error::Error for ProtocolError {}
+impl std::error::Error for ProtocolError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ProtocolError::Io(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 
 impl From<std::io::Error> for ProtocolError {
     fn from(error: std::io::Error) -> Self {
