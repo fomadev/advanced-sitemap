@@ -38,8 +38,8 @@ JSON Schemas (draft 2020-12) are in [`schemas/`](../../schemas).
 | `validation.dedupe` | `true` | Drop repeated URLs and keep the first. Costs 17 to 34 bytes of memory per distinct URL (see performance) |
 | `validation.maxDiagnostics` | `1000` | Diagnostics listed in the report. Counts stay exact |
 | `validation.hreflangReciprocity` | `false` | Since 1.1. Check across entries that every alternate links back (`HREFLANG_RETURN_LINK_MISSING`) and that pages agree on language codes (`HREFLANG_CONFLICT`). Costs about 110 bytes per alternate link |
-| `partitioning.strategy` | `sequential` | `sequential` or `stable-hash` |
-| `partitioning.partitions` | none | Required by `stable-hash`, refused otherwise |
+| `partitioning.strategy` | `sequential` | `sequential`, `stable-hash` or `consistent-hash` (since 1.1) |
+| `partitioning.partitions` | none | Required by `stable-hash` and `consistent-hash`, refused otherwise |
 | `partitioning.maxUrls` | `50000` | 1 to 50,000 |
 | `partitioning.maxBytes` | `52428800` | 4,096 to 52,428,800. Lower it to keep a safety margin |
 | `output.directory` | `.` | Relative to the configuration file |
@@ -216,6 +216,21 @@ Google's news sitemap documentation and its `sitemap-news/0.9` XSD:
   ]
 }
 ```
+
+## Hash strategies
+
+Both place a URL from `fnv1a64(loc)` alone, so a URL keeps its file while
+`partitions` is unchanged, and a full partition fails the run
+(`PARTITION_LIMIT_EXCEEDED`).
+
+| Strategy | Partition of a URL | Growing `partitions` from N to N+1 |
+|---|---|---|
+| `stable-hash` | `fnv1a64(loc) mod N`, plus 1 | Almost every URL changes file (N/(N+1)) |
+| `consistent-hash` | `jump(fnv1a64(loc), N)`, plus 1 (Lamping and Veach, 2014) | About 1/(N+1) of the URLs move, all to the new partition N+1 |
+
+Both functions are frozen by test vectors. Switching from one strategy to
+the other moves almost every URL once. Every existing file still changes
+when N grows, because each one gives some URLs to the new partition.
 
 ## Change report (`changes`, since 1.1)
 

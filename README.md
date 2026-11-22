@@ -22,8 +22,10 @@ Next.js, Nuxt, Laravel, Django and others.
   deduplication, memory stays constant: 5 MiB peak working set for 5 million
   URLs on the reference machine.
 - Exact partitioning at 50,000 URLs and 50 MiB per file by default, with
-  configurable lower limits. Two strategies: `sequential`, and `stable-hash`,
-  where a URL keeps its file across runs.
+  configurable lower limits. Three strategies: `sequential`; `stable-hash`,
+  where a URL keeps its file across runs; and `consistent-hash`, which also
+  keeps most URLs in place when the partition count grows (`explain` gives
+  the exact count of URLs that would move).
 - Automatic sitemap index, with each child's `lastmod` set to the latest
   `lastmod` of its entries.
 - Staged publication (child sitemaps, then index, then manifest). Nothing is
