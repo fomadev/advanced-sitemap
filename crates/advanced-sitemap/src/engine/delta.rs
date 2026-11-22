@@ -92,6 +92,7 @@ impl Engine {
                 snapshot: None,
                 reused: Vec::new(),
                 compare_with_published: false,
+                keep_previous: None,
             };
             return self.finish_run(outcome, store, mode, description);
         }
@@ -157,7 +158,7 @@ impl Engine {
             &mut stats,
             &mut collector,
         );
-        let (partitions, mut builder) = match written {
+        let (partitions, builder) = match written {
             Ok(Some(done)) => done,
             Ok(None) => {
                 // A partition is full: reported, nothing is published.
@@ -168,6 +169,7 @@ impl Engine {
                     snapshot: None,
                     reused: Vec::new(),
                     compare_with_published: false,
+                    keep_previous: None,
                 };
                 return self.finish_run(outcome, store, mode, description);
             }
@@ -189,24 +191,9 @@ impl Engine {
             ));
         }
 
-        // Second pass: records of the partitions kept as published.
+        // The records of the partitions kept as published are copied from
+        // the previous snapshot when the new one is written, already sorted.
         let kept: HashSet<u32> = reused.iter().map(|p| p.id).collect();
-        let copied = (|| -> io::Result<()> {
-            let reader = open_snapshot(&snapshot_path)?
-                .ok_or_else(|| io::Error::other("the snapshot disappeared"))?;
-            for record in reader {
-                let record = record?;
-                if kept.contains(&record.partition) {
-                    builder.push(record)?;
-                }
-            }
-            Ok(())
-        })();
-        if let Err(error) = copied {
-            let _ = store.discard();
-            return Err(error.into());
-        }
-
         stats.urls_written += kept_urls;
         let outcome = StreamOutcome {
             stats,
@@ -215,6 +202,7 @@ impl Engine {
             snapshot: Some(builder),
             reused,
             compare_with_published: true,
+            keep_previous: Some(kept),
         };
         self.finish_run(outcome, store, mode, description)
     }
