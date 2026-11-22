@@ -10,6 +10,7 @@ advanced-sitemap [--format human|json] <generate|validate|explain> [options]
 | `validate` | Runs the same pipeline with a store that keeps nothing; writes no file |
 | `explain` | Samples the input and describes what `generate` would do; writes no file |
 | `inspect` | Reads existing sitemap or sitemap index files (plain or gzip) and checks them; writes no file |
+| `diff` | Compares two sets of published sitemaps (files or directories); writes no file |
 
 ## Input
 
@@ -86,6 +87,30 @@ bombs), and nesting depth and text length are limited. See
 
 The JSON output follows `schemas/inspect-report.v1.schema.json`. A file is
 `valid` when it was read to the end without any `error` diagnostic.
+
+## `diff`
+
+```sh
+advanced-sitemap diff old-dist/ dist/
+advanced-sitemap --format json diff --fail-on-change old.xml.gz new.xml
+```
+
+Each argument is a file, or a directory whose `.xml` and `.xml.gz` files
+are read (not recursively). Both sides are read with the same bounded reader
+as `inspect`; every valid `<url>` is re-encoded in the engine's canonical
+form, so whitespace, quoting and element order do not count as changes, and
+any change of a value (including extensions) does. Which file a URL is in
+is not compared. Sitemap index files are read but contribute no URL.
+
+| Option | Effect |
+|---|---|
+| `--max-listed N` | URLs listed per kind (default 1000; counts stay exact) |
+| `--max-bytes N` | Uncompressed bytes read per file |
+| `--fail-on-change` | Exit 1 when the sides differ |
+
+Exit code 1 also when a file of either side has errors (run `inspect` on it).
+Memory is bounded: both sides are sorted with the snapshot's external sort
+in the system temporary directory.
 
 ## Exit codes (stable contract)
 

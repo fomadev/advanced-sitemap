@@ -8,6 +8,11 @@ contain breaking changes.
 
 ### Added
 
+- CLI `diff OLD NEW`: compares two sets of published sitemaps (files or
+  directories) after canonical re-encoding, with bounded memory, exact
+  counts, URL lists and `--fail-on-change`. Facade module
+  `advanced_sitemap::diff`.
+
 - Phase B of the Lifecycle Engine: `sitemap-snapshot` crate (BLAKE3-128
   digests, sorted prefix-compressed binary snapshot with an integrity
   trailer, external sort with a memory budget, streaming diff) and

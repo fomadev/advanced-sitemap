@@ -37,3 +37,11 @@ fichiers déjà publiés.
 - Coût d'une opération : relire et réécrire une partition (au plus 50 Mio).
   Pour beaucoup de changements dispersés, `skip-unchanged` peut être plus
   rapide ; le planner compare les deux coûts.
+
+## Mise à jour du 2026-11-22
+
+Le test de propriété d'aller-retour existe
+(`reading_and_reencoding_is_exact_for_every_fixture`) : pour chaque fixture
+de conformance (y compris alternates, images, vidéos et news), relire le
+fichier puis réencoder ses entrées redonne exactement les blocs `<url>`
+générés. Il devra être étendu à des entrées aléatoires avant la phase D.
