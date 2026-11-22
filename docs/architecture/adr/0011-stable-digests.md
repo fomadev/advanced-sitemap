@@ -1,6 +1,6 @@
 # ADR-0011 — Empreintes persistées stables
 
-- Statut : proposé
+- Statut : proposé ; conditions de l'adoption vérifiées le 2026-11-22 (ci-dessous)
 - Date : 2026-11-21
 
 ## Contexte
@@ -47,3 +47,22 @@ l'encodage XML tourne à environ 270 Mo/s mesurés (1,57 M URL/s × environ
 - Débit réel sur la machine de référence.
 - En cas de refus, repli sur FNV-1a 128 dans le dépôt, avec la limite de
   résistance documentée.
+
+## Vérifications faites (2026-11-22)
+
+- **Licences** du graphe de `blake3` 1.8.7 avec `default-features = false`
+  et les fonctionnalités `std` et `pure` : `blake3` (CC0-1.0 OR Apache-2.0
+  OR Apache-2.0 WITH LLVM-exception), `arrayvec`, `cfg-if`, `cpufeatures`,
+  `constant_time_eq` (CC0-1.0 OR MIT-0 OR Apache-2.0), et pour la
+  compilation `cc`, `find-msvc-tools`, `shlex`. Toutes acceptent MIT ou
+  Apache-2.0, déjà autorisées dans `deny.toml`. La dépendance BSD-2-Clause
+  envisagée plus haut n'existe pas dans cette version.
+- **Débit** sur la machine de référence (i5-6300U, code portable `pure`,
+  exemple `digest_throughput`) : 1 703 à 1 984 Mio/s sur un bloc de
+  256 Mio ; 3,35 à 3,49 millions de blocs de 170 octets par seconde. Le
+  pipeline complet traite environ 220 000 URL/s : l'empreinte d'entrée
+  représente environ 6 % de son temps.
+- **Vecteurs figés** : le préfixe du vecteur officiel BLAKE3 pour l'entrée
+  vide, et une URL de référence, testés sur les trois OS par la CI.
+
+Les deux conditions sont remplies ; la décision finale reste au mainteneur.
