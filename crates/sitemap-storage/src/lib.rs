@@ -204,6 +204,22 @@ impl DirectoryLock {
     pub fn path(&self) -> &Path {
         &self.path
     }
+
+    /// Whether another process holds the lock `<dir>/<name>` right now.
+    /// Creates nothing: a missing directory or lock file means not held.
+    /// The answer can change as soon as it is returned.
+    pub fn is_held(dir: &Path, name: &str) -> io::Result<bool> {
+        let file = match fs::OpenOptions::new().read(true).open(dir.join(name)) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(error),
+        };
+        match file.try_lock() {
+            Ok(()) => Ok(false),
+            Err(fs::TryLockError::WouldBlock) => Ok(true),
+            Err(fs::TryLockError::Error(error)) => Err(error),
+        }
+    }
 }
 
 /// Name of the lock file [`FsStore`] keeps in its output directory.
