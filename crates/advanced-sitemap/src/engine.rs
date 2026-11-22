@@ -766,6 +766,9 @@ impl Engine {
         let strategy = match c.strategy {
             PartitionStrategy::Sequential => "sequential".to_owned(),
             PartitionStrategy::StableHash { partitions } => format!("stable-hash:{partitions}"),
+            PartitionStrategy::ConsistentHash { partitions } => {
+                format!("consistent-hash:{partitions}")
+            }
         };
         let index = match c.layout.index {
             IndexMode::Auto => "auto",

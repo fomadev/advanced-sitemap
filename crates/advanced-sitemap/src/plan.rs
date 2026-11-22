@@ -93,9 +93,9 @@ pub struct InputPlan {
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PartitioningPlan {
-    /// `sequential` or `stable-hash`.
+    /// `sequential`, `stable-hash` or `consistent-hash`.
     pub strategy: &'static str,
-    /// Configured partition count (stable-hash).
+    /// Configured partition count (hash strategies).
     pub partitions: Quantity,
     /// URLs per file.
     pub max_urls: u32,
@@ -103,7 +103,7 @@ pub struct PartitioningPlan {
     pub max_bytes: u64,
     /// Sitemap files the run would produce.
     pub files: Quantity,
-    /// Suggested stable-hash partition count (20% headroom), when computable.
+    /// Suggested partition count for a hash strategy (20% headroom), when computable.
     pub suggested_partitions: Option<u64>,
 }
 
@@ -262,7 +262,8 @@ pub fn explain(resolved: &ResolvedConfig, sample_size: usize) -> Result<Plan, En
             });
             ("sequential", Quantity::Unknown, files, None)
         }
-        PartitionStrategy::StableHash { partitions } => {
+        PartitionStrategy::StableHash { partitions }
+        | PartitionStrategy::ConsistentHash { partitions } => {
             let configured = u64::from(partitions.get());
             let suggested = valid_quantity
                 .value()
@@ -276,7 +277,7 @@ pub fn explain(resolved: &ResolvedConfig, sample_size: usize) -> Result<Plan, En
                 }
             }
             (
-                "stable-hash",
+                config.strategy.name(),
                 Quantity::Configured(configured),
                 Quantity::Configured(configured),
                 suggested,
