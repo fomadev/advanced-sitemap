@@ -1,6 +1,6 @@
 # ADR-0012 — Stratégie `consistent-hash` (jump consistent hash)
 
-- Statut : proposé
+- Statut : accepté (2026-11-22)
 - Date : 2026-11-21
 
 ## Contexte
@@ -58,3 +58,12 @@ URL du jeu de données de référence :
   l'agrandissement, puisque chacun cède des URL à la nouvelle partition. Le
   gain porte sur l'emplacement des URL, pas sur le nombre de fichiers
   écrits ce jour-là.
+
+## Acceptation (2026-11-22)
+
+Accepté par le mainteneur le 2026-11-22, après une revue qui a vérifié la
+décision contre le code et les tests (R18 du registre des risques). La valeur `consistent-hash` de
+`partitioning.strategy` et l'affectation des URL deviennent un contrat :
+la changer déplacerait les URL publiées. Le calcul en `f64` donne la même
+partition sur les cinq plateformes de la CI, ARM64 compris : le job
+`determinism` utilise cette stratégie.

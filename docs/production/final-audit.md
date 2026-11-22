@@ -41,7 +41,6 @@
 | R2 | Publication d'un ensemble non atomique | P2 | Documenté, détecté par `doctor`, réparé à l'exécution suivante ; révisions + pointeur à décider |
 | R4 | Coupure électrique non testée par un banc | P2 | Arrêts brutaux du processus testés ; dépend d'un disque qui respecte `fsync` |
 | R15 | 50 M d'URL non mesurés | P2 | Non annoncé |
-| R18 | ADR-0010 à 0013 non approuvés | P1 pour 1.0 | Décision du propriétaire |
 | R26 | Licence des contributions externes non tranchée | P2 | Avant la première contribution externe |
 | R20, R21, R23, R24 | Verrou illisible sous Windows, index d'index absent, calibration sur une machine, monothread | P3 | Documentés |
 
@@ -61,5 +60,6 @@ Le moteur et la CLI remplissent les conditions techniques de sortie
 ([release-readiness.md](release-readiness.md)) : aucun défaut connu de
 corruption, comportement identique sur cinq plateformes, erreurs et
 limites documentées. La licence est décidée (FPL v1.0, Fordima Inc.). Les
-notices des dépendances sont jointes aux archives. Une distribution attend
-l'approbation des ADR et votre autorisation de publier.
+notices des dépendances sont jointes aux archives et les ADR-0010 à 0013
+sont acceptés. Une distribution n'attend plus que votre autorisation de
+publier.
