@@ -10,6 +10,8 @@
 //! | 3 | I/O error |
 //! | 4 | Internal error |
 
+#![forbid(unsafe_code)]
+
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -240,6 +242,7 @@ impl From<EngineError> for Failure {
             EngineError::Io(_) => (EXIT_IO, "io"),
             EngineError::Xml(_) => (EXIT_INTERNAL, "internal"),
             EngineError::DeltaRefused(_) => (EXIT_CONFIG, "delta-refused"),
+            EngineError::Busy(_) => (EXIT_IO, "busy"),
         };
         Failure {
             code,

@@ -102,22 +102,22 @@ impl ReciprocityChecker {
                 ),
                 Some(&back) => {
                     // How this page names itself versus how the target names it.
-                    if let Some(&own) = by_pair.get(&(edge.from, edge.from)) {
-                        if own != back {
-                            out.push(
-                                Diagnostic::new(
-                                    DiagnosticCode::HreflangConflict,
-                                    format!(
-                                        "this page calls itself {} but its {} alternate calls it {}",
-                                        self.names[own as usize],
-                                        self.names[edge.language as usize],
-                                        self.names[back as usize]
-                                    ),
-                                    location,
-                                )
-                                .with_value(source),
-                            );
-                        }
+                    if let Some(&own) = by_pair.get(&(edge.from, edge.from))
+                        && own != back
+                    {
+                        out.push(
+                            Diagnostic::new(
+                                DiagnosticCode::HreflangConflict,
+                                format!(
+                                    "this page calls itself {} but its {} alternate calls it {}",
+                                    self.names[own as usize],
+                                    self.names[edge.language as usize],
+                                    self.names[back as usize]
+                                ),
+                                location,
+                            )
+                            .with_value(source),
+                        );
                     }
                 }
             }

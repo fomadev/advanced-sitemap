@@ -30,3 +30,16 @@
   préfixe déjà comparé est recopié depuis le fichier publié et l'écriture
   continue en staging. Un artefact identique n'est ni écrit, ni synchronisé,
   ni renommé.
+
+## Mise à jour du 2026-11-22 : verrou et durabilité des renommages
+
+- Chaque exécution qui écrit prend un verrou exclusif sur le dossier de
+  sortie (`.advanced-sitemap.lock`, verrou consultatif du système libéré à
+  la fin du processus) et, avec un snapshot, sur `<state>/<stem>.lock`.
+  Sans lui, deux exécutions pouvaient entrelacer leurs publications, et
+  deux `apply` partir du même état et perdre les opérations de l'un.
+- Sous verrou, les dossiers de staging laissés par une exécution tuée sont
+  supprimés.
+- Sous Unix, le dossier est synchronisé après les renommages, pour que
+  ceux-ci survivent à une coupure. La publication d'un ensemble reste non
+  atomique (voir `docs/production/audit.md`).

@@ -181,9 +181,9 @@ impl Validator {
         );
         if let (Some(expiration), Some(reference)) =
             (&expiration_date, &self.options.reference_time)
+            && expiration.cmp_instant(reference) != Ordering::Greater
         {
-            if expiration.cmp_instant(reference) != Ordering::Greater {
-                self.emit(
+            self.emit(
                     out,
                     error(
                         DiagnosticCode::VideoExpired,
@@ -193,7 +193,6 @@ impl Validator {
                     )
                     .with_suggestion("Remove the video or update its expiration date."),
                 );
-            }
         }
         let publication_date = self.video_date(
             raw.publication_date.as_deref(),
@@ -315,8 +314,8 @@ impl Validator {
                 .info
                 .as_deref()
                 .and_then(|v| self.parse_url(v, location, &field("uploader.info"), out));
-            if let (Some(info), Some(page)) = (&info, page) {
-                if info.host() != page.host() {
+            if let (Some(info), Some(page)) = (&info, page)
+                && info.host() != page.host() {
                     self.emit(
                         out,
                         error(
@@ -327,7 +326,6 @@ impl Validator {
                         ),
                     );
                 }
-            }
             Some(VideoUploader {
                 name: name.to_owned(),
                 info,

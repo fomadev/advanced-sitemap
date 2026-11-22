@@ -39,6 +39,18 @@
 - The snapshot is checked (count and BLAKE3 checksum) before it is trusted;
   a damaged or foreign file is ignored and replaced (`SNAPSHOT_INVALID`).
 
+### Concurrent runs and interrupted runs
+
+- Every writing run locks its output directory and its state directory
+  (operating system advisory locks, released on process exit). This
+  prevents two runs from interleaving their publications or an `apply`
+  from losing another run's changes. Programs other than Advanced Sitemap
+  are not excluded.
+- Data is synced before each rename, and on Unix the directory is synced
+  after the renames. Resistance to a power cut is not tested.
+- See [docs/production/audit.md](../production/audit.md) for the exact
+  guarantees and what remains open.
+
 ## Trust boundaries
 
 - The **CLI** trusts its operator. Input and output paths, including

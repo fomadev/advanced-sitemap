@@ -44,16 +44,17 @@ impl LanguageTag {
         let mut normalized = language.to_ascii_lowercase();
 
         let mut rest: Vec<&str> = parts.collect();
-        if let Some(script) = rest.first().copied() {
-            if script.len() == 4 && script.bytes().all(|b| b.is_ascii_alphabetic()) {
-                normalized.push('-');
-                let mut chars = script.chars();
-                if let Some(first) = chars.next() {
-                    normalized.push(first.to_ascii_uppercase());
-                }
-                normalized.extend(chars.map(|c| c.to_ascii_lowercase()));
-                rest.remove(0);
+        if let Some(script) = rest.first().copied()
+            && script.len() == 4
+            && script.bytes().all(|b| b.is_ascii_alphabetic())
+        {
+            normalized.push('-');
+            let mut chars = script.chars();
+            if let Some(first) = chars.next() {
+                normalized.push(first.to_ascii_uppercase());
             }
+            normalized.extend(chars.map(|c| c.to_ascii_lowercase()));
+            rest.remove(0);
         }
         if let Some(region) = rest.first().copied() {
             let alpha = region.len() == 2 && region.bytes().all(|b| b.is_ascii_alphabetic());

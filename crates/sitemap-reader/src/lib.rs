@@ -24,6 +24,8 @@
 //! `complete == false`. Only I/O errors of the underlying source are returned
 //! as `Err`.
 
+#![forbid(unsafe_code)]
+
 use std::collections::{BTreeMap, HashSet};
 use std::error::Error as StdError;
 use std::fmt;
@@ -579,13 +581,13 @@ impl<'o, F: FnMut(Item)> State<'o, F> {
                 self.push_text(&decoded)?;
             }
             Event::Decl(decl) => {
-                if let Some(Ok(encoding)) = decl.encoding() {
-                    if !encoding.eq_ignore_ascii_case("utf-8") {
-                        return Err(self.fatal(
-                            DiagnosticCode::XmlEncodingUnsupported,
-                            format!("declared encoding '{encoding}' is not UTF-8"),
-                        ));
-                    }
+                if let Some(Ok(encoding)) = decl.encoding()
+                    && !encoding.eq_ignore_ascii_case("utf-8")
+                {
+                    return Err(self.fatal(
+                        DiagnosticCode::XmlEncodingUnsupported,
+                        format!("declared encoding '{encoding}' is not UTF-8"),
+                    ));
                 }
             }
             Event::DocType(_) => {
@@ -863,23 +865,26 @@ impl<'o, F: FnMut(Item)> State<'o, F> {
     fn open_nested(&mut self, ns: &str, local: &str, start: &BytesStart<'_>) {
         let depth = self.depth;
         let in_video = self.entry.as_ref().is_some_and(|e| e.video.is_some());
-        if depth == 4 && in_video && self.field.is_none() && ns == VIDEO_NS {
-            if let Some(field) = VideoField::parse(local) {
-                let attribute = match field {
-                    VideoField::Restriction | VideoField::Platform => "relationship",
-                    VideoField::Uploader => "info",
-                    _ => "",
-                };
-                let value = (!attribute.is_empty())
-                    .then(|| attribute_value(start, attribute))
-                    .flatten();
-                if let Some(entry) = self.entry.as_mut() {
-                    entry.video_attribute = value;
-                }
-                self.field = Some((Field::Video(field), depth));
-                self.text.clear();
-                return;
+        if depth == 4
+            && in_video
+            && self.field.is_none()
+            && ns == VIDEO_NS
+            && let Some(field) = VideoField::parse(local)
+        {
+            let attribute = match field {
+                VideoField::Restriction | VideoField::Platform => "relationship",
+                VideoField::Uploader => "info",
+                _ => "",
+            };
+            let value = (!attribute.is_empty())
+                .then(|| attribute_value(start, attribute))
+                .flatten();
+            if let Some(entry) = self.entry.as_mut() {
+                entry.video_attribute = value;
             }
+            self.field = Some((Field::Video(field), depth));
+            self.text.clear();
+            return;
         }
         let (in_news, in_publication) = self
             .entry
@@ -938,20 +943,20 @@ impl<'o, F: FnMut(Item)> State<'o, F> {
             }
             self.skip = None;
         }
-        if let Some((field, field_depth)) = self.field {
-            if field_depth == depth {
-                self.field = None;
-                return self.finish_field(field);
-            }
+        if let Some((field, field_depth)) = self.field
+            && field_depth == depth
+        {
+            self.field = None;
+            return self.finish_field(field);
         }
         match depth {
             1 => self.root_closed = true,
             2 => self.finish_entry(),
             3 if ns == IMAGE_NS && local == "image" => {
-                if let Some(entry) = self.entry.as_mut() {
-                    if let Some(loc) = entry.image.take() {
-                        entry.raw.images.push(RawImage { loc });
-                    }
+                if let Some(entry) = self.entry.as_mut()
+                    && let Some(loc) = entry.image.take()
+                {
+                    entry.raw.images.push(RawImage { loc });
                 }
             }
             4 if ns == NEWS_NS && local == "publication" => {
@@ -965,10 +970,10 @@ impl<'o, F: FnMut(Item)> State<'o, F> {
                 }
             }
             3 if ns == VIDEO_NS && local == "video" => {
-                if let Some(entry) = self.entry.as_mut() {
-                    if let Some(video) = entry.video.take() {
-                        entry.raw.videos.push(video);
-                    }
+                if let Some(entry) = self.entry.as_mut()
+                    && let Some(video) = entry.video.take()
+                {
+                    entry.raw.videos.push(video);
                 }
             }
             _ => {}
@@ -1025,18 +1030,17 @@ impl<'o, F: FnMut(Item)> State<'o, F> {
             Field::Video(video_field) => {
                 let attribute = entry.video_attribute.take();
                 let record = self.report.entries;
-                if let Some(video) = entry.video.as_mut() {
-                    if let Some(diagnostic) = set_video_field(video, video_field, value, attribute)
-                    {
-                        entry.read_error = true;
-                        let index = entry.raw.videos.len();
-                        let location = Location::record(record, None)
-                            .with_field(format!("videos[{index}].{}", video_field.name()));
-                        self.report.diagnostics.push(Diagnostic {
-                            location,
-                            ..diagnostic
-                        });
-                    }
+                if let Some(video) = entry.video.as_mut()
+                    && let Some(diagnostic) = set_video_field(video, video_field, value, attribute)
+                {
+                    entry.read_error = true;
+                    let index = entry.raw.videos.len();
+                    let location = Location::record(record, None)
+                        .with_field(format!("videos[{index}].{}", video_field.name()));
+                    self.report.diagnostics.push(Diagnostic {
+                        location,
+                        ..diagnostic
+                    });
                 }
             }
             Field::Priority => match value.parse::<f64>() {

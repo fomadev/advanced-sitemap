@@ -9,14 +9,17 @@ and publishes through a staging area. It does not depend on any web
 framework. The same engine is meant to back the FomaDev integrations for
 Next.js, Nuxt, Laravel, Django and others.
 
-> Status: **0.1.0, pre-release MVP.** Nothing is published to crates.io or
-> npm yet. APIs and contracts may change before 1.0.
+> Status: **0.1.0, pre-release.** Usable for real tests and supervised
+> pilots, not yet for critical production: see the
+> [production readiness audit](docs/production/readiness-matrix.md).
+> Nothing is published to crates.io or npm. APIs and contracts may change
+> before 1.0.
 
 ## What works today
 
 - Validation of `loc`, `lastmod` (W3C Datetime), `changefreq`, `priority`,
-  hreflang alternates and image locations, in `standard` and `strict`
-  profiles. Every problem is reported with a stable code, a severity, a
+  hreflang alternates, images, Google Video and Google News metadata, in
+  `standard` and `strict` profiles. Every problem is reported with a stable code, a severity, a
   location (record, line, field) and a suggested fix.
 - Streaming generation from JSON Lines with bounded memory. Without
   deduplication, memory stays constant: 5 MiB peak working set for 5 million
@@ -33,15 +36,23 @@ Next.js, Nuxt, Laravel, Django and others.
   `lastmod` of its entries.
 - Staged publication (child sitemaps, then index, then manifest). Nothing is
   published when a run fails. Published files are never deleted; files that
-  are no longer produced are reported.
+  are no longer produced are reported. Each run takes an exclusive lock on
+  its output (and state) directory, so concurrent runs cannot interleave.
+- robots.txt generation (RFC 9309) listing the generated sitemap.
+- Cross-entry hreflang checks (return links, conflicting language codes).
+- Bounded, secure reading of existing sitemaps (`inspect`, plain or gzip),
+  and comparison of two published sets (`diff`).
+- URL-level snapshot (`--state-dir`) with a change report, and
+  `--skip-unchanged`, which republishes only files whose bytes changed.
 - Output that is identical byte for byte on every platform for the same input.
-- A CLI with `generate`, `validate` and `explain`, human or JSON output, and
-  stable exit codes.
-- A versioned JSON protocol (`schemaVersion: "1.0"`) with JSON Schemas.
+- A CLI with `generate`, `validate`, `explain`, `inspect`, `diff` and
+  `apply`, human or JSON output, and stable exit codes.
+- A versioned JSON protocol (`schemaVersion` 1.0 and 1.1) with JSON Schemas.
 
-Planned: video and news extensions, robots.txt, IndexNow, `inspect`/`diff`
-of existing sitemaps, incremental generation, Node.js and Python bindings.
-See [docs/architecture/mvp-scope.md](docs/architecture/mvp-scope.md).
+Not available yet: automatic choice between full, skip-unchanged and delta
+runs, IndexNow, and the Node.js, Python and PHP bindings (separate work
+after the Rust core is stable). Known limits are listed in
+[docs/production/risk-register.md](docs/production/risk-register.md).
 
 ## Quick start (CLI)
 
@@ -81,6 +92,7 @@ For large or streamed inputs, use `Engine` (see
 | Architecture and ADRs | [docs/architecture](docs/architecture/overview.md) |
 | Performance | [docs/performance](docs/performance/README.md) |
 | Security model | [docs/security](docs/security/README.md) |
+| Production readiness | [docs/production](docs/production/audit.md) |
 | Audit of the existing ecosystem | [docs/research](docs/research/existing-ecosystem.md) |
 
 ## Workspace
@@ -90,11 +102,12 @@ For large or streamed inputs, use `Engine` (see
 | `sitemap-model` | Validated types, raw records, diagnostics, protocol limits |
 | `sitemap-validation` | Raw record to typed entry, with diagnostics |
 | `sitemap-xml` | Streaming XML writer |
-| `sitemap-storage` | Staged artifact stores (file system, memory, null) |
+| `sitemap-storage` | Staged artifact stores (file system, memory, null), directory lock |
 | `sitemap-index` | Partitioning and index layout |
 | `sitemap-protocol` | Versioned JSON documents and bounded readers |
-| `sitemap-reader` | Bounded reader of existing sitemaps (XML or gzip), used by `inspect` |
+| `sitemap-reader` | Bounded reader of existing sitemaps (XML or gzip), used by `inspect`, `diff` and `apply` |
 | `sitemap-robots` | Validated, deterministic robots.txt (RFC 9309) |
+| `sitemap-snapshot` | URL-level snapshot: BLAKE3 digests, sorted format, external sort, diff |
 | `advanced-sitemap` | Public facade: engine, builder, planner |
 | `sitemap-cli` | `advanced-sitemap` binary |
 

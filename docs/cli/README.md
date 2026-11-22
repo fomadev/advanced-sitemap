@@ -173,6 +173,23 @@ The feed is JSON Lines
 - Memory: the feed is held in memory (one entry per changed URL), plus one
   partition at a time.
 
+## Concurrent runs
+
+`generate`, `validate` and `apply` take an exclusive lock on the output
+directory (`.advanced-sitemap.lock`) and, with `--state-dir`, on
+`<state>/<stem>.lock`, before reading or writing anything. A second run on
+the same directory fails at once with exit code 3 and `"kind": "busy"`;
+retry when the first one has finished. The lock is released when the
+process exits, even after a crash.
+
+- The lock file is empty and stays in the output directory. Exclude it
+  from deployments. On Windows it cannot be read while a run holds it, so
+  copy the output directory after the run.
+- The next run removes staging directories (`.advanced-sitemap-staging-*`)
+  left by a run that was killed.
+- `inspect` and `diff` do not take the lock: reading a directory during a
+  publication can see a mix of old and new files, each of them complete.
+
 ## Exit codes (stable contract)
 
 | Code | Meaning |
@@ -180,7 +197,7 @@ The feed is JSON Lines
 | 0 | Success. With `onInvalid = skip`, success can include reported errors for excluded records |
 | 1 | Generation failed or the input is invalid (or warnings with `--deny-warnings`) |
 | 2 | Usage or configuration error (bad flag, invalid or unsupported document), or a refused `apply` |
-| 3 | I/O error (missing input, unwritable output) |
+| 3 | I/O error (missing input, unwritable output), or the output or state directory is locked by another run (`"kind": "busy"`) |
 | 4 | Internal error |
 
 ## Output

@@ -38,6 +38,8 @@
 //! # }
 //! ```
 
+#![forbid(unsafe_code)]
+
 mod config;
 pub mod diff;
 mod engine;
@@ -73,8 +75,8 @@ pub use sitemap_reader::{
 };
 pub use sitemap_robots::{RobotsConfig, RobotsGroup, RobotsTxt};
 pub use sitemap_storage::{
-    ArtifactName, ArtifactStore, ArtifactWriter, FsStore, MemoryStore, NullStore, Publication,
-    StoreDescription,
+    ArtifactName, ArtifactStore, ArtifactWriter, DirectoryLock, FsStore, LOCK_FILE, MemoryStore,
+    NullStore, Publication, StoreDescription,
 };
 pub use sitemap_validation::{ValidationMode, ValidationOptions, Validator};
 pub use sitemap_xml::{self as xml, Namespaces};

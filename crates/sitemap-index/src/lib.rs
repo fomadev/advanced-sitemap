@@ -6,6 +6,8 @@
 //! written. [`plan_layout`] then decides the public file names and whether a
 //! sitemap index is needed.
 
+#![forbid(unsafe_code)]
+
 mod fnv;
 mod jump;
 

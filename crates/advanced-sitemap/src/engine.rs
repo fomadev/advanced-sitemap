@@ -158,6 +158,9 @@ pub enum EngineError {
     /// The delta mode cannot reproduce a full generation; nothing was
     /// written. The message says why and what to run instead.
     DeltaRefused(String),
+    /// Another process is using the output or state directory; nothing was
+    /// read or written. Retry when it has finished.
+    Busy(String),
 }
 
 impl fmt::Display for EngineError {
@@ -168,6 +171,7 @@ impl fmt::Display for EngineError {
             EngineError::Protocol(error) => write!(f, "{error}"),
             EngineError::Xml(error) => write!(f, "XML error: {error}"),
             EngineError::DeltaRefused(reason) => write!(f, "delta refused: {reason}"),
+            EngineError::Busy(reason) => write!(f, "busy: {reason}"),
         }
     }
 }
@@ -314,6 +318,7 @@ impl Engine {
         mode: RunMode,
     ) -> Result<GenerationReport, EngineError> {
         let description = store.describe();
+        let _state_lock = self.lock_destination(store)?;
         store.set_compare_with_published(
             mode == RunMode::Publish && self.config.publish == PublishPolicy::Changed,
         );
@@ -805,6 +810,34 @@ impl Engine {
     }
 }
 
+impl Engine {
+    /// Takes exclusive use of the store and, when a snapshot is kept, of
+    /// `<state>/<stem>.lock`, for the rest of the run. The returned lock
+    /// must be kept alive until the run ends.
+    fn lock_destination(
+        &self,
+        store: &mut dyn ArtifactStore,
+    ) -> Result<Option<sitemap_storage::DirectoryLock>, EngineError> {
+        let busy = |error: io::Error| {
+            if error.kind() == io::ErrorKind::WouldBlock {
+                EngineError::Busy(error.to_string())
+            } else {
+                EngineError::Io(error)
+            }
+        };
+        store.lock().map_err(busy)?;
+        match &self.config.snapshot {
+            Some(settings) => sitemap_storage::DirectoryLock::acquire(
+                &settings.directory,
+                &format!("{}.lock", self.config.layout.stem),
+            )
+            .map(Some)
+            .map_err(busy),
+            None => Ok(None),
+        }
+    }
+}
+
 impl EngineConfig {
     /// Canonical description of the settings that shape the published bytes
     /// (lifecycle invariant I7). Changing its text changes every snapshot's
@@ -895,7 +928,8 @@ impl Engine {
 
         let result = self.compare_snapshots(&path, &temp, &config, settings.max_listed, collector);
         let finished = match (&result, mode) {
-            (Ok(_), RunMode::Publish) => fs::rename(&temp, &path),
+            (Ok(_), RunMode::Publish) => fs::rename(&temp, &path)
+                .and_then(|()| sitemap_storage::sync_dir(&settings.directory)),
             _ => fs::remove_file(&temp),
         };
         let report = result?;

@@ -12,6 +12,8 @@
 //! The crate also defines [`Diagnostic`]s, the structured findings produced by
 //! every stage of the engine, and the protocol [`limits`].
 
+#![forbid(unsafe_code)]
+
 mod datetime;
 mod diagnostic;
 mod entry;
