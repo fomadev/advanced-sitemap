@@ -7,6 +7,7 @@
 //! sitemap index is needed.
 
 mod fnv;
+mod jump;
 
 use std::fmt;
 use std::io;
@@ -20,6 +21,7 @@ use sitemap_storage::{ArtifactName, ArtifactStore, ArtifactWriter, Publication};
 use sitemap_xml::{Namespaces, URLSET_FOOTER, UrlsetWriter, XmlError, encode_url, urlset_header};
 
 pub use fnv::fnv1a64;
+pub use jump::jump_consistent_hash;
 
 /// How entries are assigned to partitions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -32,6 +34,49 @@ pub enum PartitionStrategy {
         /// Number of partitions.
         partitions: NonZeroU32,
     },
+    /// `partition = jump_consistent_hash(fnv1a64(loc), partitions)` (ADR-0012).
+    /// Like `StableHash` while the count is unchanged; growing it from N to
+    /// N+1 moves about 1/(N+1) of the URLs, all to the new partition. A full
+    /// partition is an error.
+    ConsistentHash {
+        /// Number of partitions.
+        partitions: NonZeroU32,
+    },
+}
+
+impl PartitionStrategy {
+    /// Partition count of a hash strategy, `None` for `Sequential`.
+    pub fn hash_partitions(self) -> Option<NonZeroU32> {
+        match self {
+            PartitionStrategy::Sequential => None,
+            PartitionStrategy::StableHash { partitions }
+            | PartitionStrategy::ConsistentHash { partitions } => Some(partitions),
+        }
+    }
+
+    /// Protocol name: `sequential`, `stable-hash` or `consistent-hash`.
+    pub fn name(self) -> &'static str {
+        match self {
+            PartitionStrategy::Sequential => "sequential",
+            PartitionStrategy::StableHash { .. } => "stable-hash",
+            PartitionStrategy::ConsistentHash { .. } => "consistent-hash",
+        }
+    }
+
+    /// 1-based partition of `loc` under a hash strategy, `None` for
+    /// `Sequential` (which depends on input order).
+    pub fn hash_partition(self, loc: &str) -> Option<u32> {
+        let key = fnv1a64(loc.as_bytes());
+        match self {
+            PartitionStrategy::Sequential => None,
+            PartitionStrategy::StableHash { partitions } => {
+                Some((key % u64::from(partitions.get())) as u32 + 1)
+            }
+            PartitionStrategy::ConsistentHash { partitions } => {
+                Some(jump_consistent_hash(key, partitions.get()) + 1)
+            }
+        }
+    }
 }
 
 /// Per-file limits. Lower them to keep a safety margin.
@@ -120,7 +165,7 @@ pub enum PushError {
         /// Configured limit.
         limit: u64,
     },
-    /// A stable-hash partition is full.
+    /// A hash partition (`stable-hash` or `consistent-hash`) is full.
     PartitionFull {
         /// 1-based partition number.
         partition: u32,
@@ -129,7 +174,7 @@ pub enum PushError {
         /// Configured byte limit.
         max_bytes: u64,
     },
-    /// A stable-hash partition already holds 1,000 news entries, the Google
+    /// A hash partition already holds 1,000 news entries, the Google
     /// News limit per file.
     NewsLimit {
         /// 1-based partition number.
@@ -154,11 +199,11 @@ impl fmt::Display for PushError {
                 max_bytes,
             } => write!(
                 f,
-                "stable-hash partition {partition} is full ({max_urls} URLs or {max_bytes} bytes)"
+                "hash partition {partition} is full ({max_urls} URLs or {max_bytes} bytes)"
             ),
             PushError::NewsLimit { partition } => write!(
                 f,
-                "stable-hash partition {partition} already holds {MAX_NEWS_PER_SITEMAP} news entries"
+                "hash partition {partition} already holds {MAX_NEWS_PER_SITEMAP} news entries"
             ),
             PushError::Xml(error) => write!(f, "{error}"),
             PushError::Io(error) => write!(f, "store error: {error}"),
@@ -232,10 +277,7 @@ impl<'s> Partitioner<'s> {
         namespaces: Namespaces,
         stem: &str,
     ) -> Self {
-        let slot_count = match strategy {
-            PartitionStrategy::Sequential => 1,
-            PartitionStrategy::StableHash { partitions } => partitions.get() as usize,
-        };
+        let slot_count = strategy.hash_partitions().map_or(1, |n| n.get() as usize);
         Self {
             store,
             strategy,
@@ -275,12 +317,10 @@ impl<'s> Partitioner<'s> {
             });
         }
 
-        let slot = match self.strategy {
-            PartitionStrategy::Sequential => 0,
-            PartitionStrategy::StableHash { partitions } => {
-                (fnv1a64(entry.loc.as_str().as_bytes()) % u64::from(partitions.get())) as usize
-            }
-        };
+        let slot = self
+            .strategy
+            .hash_partition(entry.loc.as_str())
+            .map_or(0, |partition| partition as usize - 1);
 
         let is_news = entry.news.is_some();
         if let Some(open) = &self.slots[slot] {
@@ -295,10 +335,14 @@ impl<'s> Partitioner<'s> {
                             self.closed.push(open.close()?);
                         }
                     }
-                    PartitionStrategy::StableHash { .. } if news_full => {
+                    PartitionStrategy::StableHash { .. }
+                    | PartitionStrategy::ConsistentHash { .. }
+                        if news_full =>
+                    {
                         return Err(PushError::NewsLimit { partition: open.id });
                     }
-                    PartitionStrategy::StableHash { .. } => {
+                    PartitionStrategy::StableHash { .. }
+                    | PartitionStrategy::ConsistentHash { .. } => {
                         return Err(PushError::PartitionFull {
                             partition: open.id,
                             max_urls: self.limits.max_urls,
@@ -316,7 +360,9 @@ impl<'s> Partitioner<'s> {
                     self.next_sequential_id += 1;
                     id
                 }
-                PartitionStrategy::StableHash { .. } => slot as u32 + 1,
+                PartitionStrategy::StableHash { .. } | PartitionStrategy::ConsistentHash { .. } => {
+                    slot as u32 + 1
+                }
             };
             self.slots[slot] = Some(self.open(id)?);
         }
@@ -747,6 +793,62 @@ mod tests {
         let tight = PartitionLimits::new(100, MAX_SITEMAP_BYTES).unwrap();
         let (overflow, _) = run(strategy, tight, 1000);
         assert!(matches!(overflow, Err(PushError::PartitionFull { .. })));
+    }
+
+    #[test]
+    fn consistent_hash_places_by_jump_hash() {
+        let strategy = PartitionStrategy::ConsistentHash {
+            partitions: NonZeroU32::new(5).unwrap(),
+        };
+        let (a, _) = run(strategy, PartitionLimits::default(), 1000);
+        let (b, _) = run(strategy, PartitionLimits::default(), 1000);
+        let a = a.unwrap();
+        assert_eq!(a, b.unwrap());
+        assert_eq!(a.len(), 5);
+        assert_eq!(a.iter().map(|p| p.urls).sum::<u64>(), 1000);
+
+        let store = MemoryStore::new();
+        let mut handle = store.clone();
+        let mut partitioner = Partitioner::new(
+            &mut handle,
+            strategy,
+            PartitionLimits::default(),
+            Namespaces::NONE,
+            "s",
+        );
+        for i in 0..50 {
+            let e = entry(i);
+            let expected = jump_consistent_hash(fnv1a64(e.loc.as_str().as_bytes()), 5) + 1;
+            assert_eq!(partitioner.push(&e).unwrap(), expected);
+            assert_eq!(strategy.hash_partition(e.loc.as_str()), Some(expected));
+        }
+
+        let tight = PartitionLimits::new(100, MAX_SITEMAP_BYTES).unwrap();
+        let (overflow, _) = run(strategy, tight, 1000);
+        assert!(matches!(overflow, Err(PushError::PartitionFull { .. })));
+    }
+
+    #[test]
+    fn strategy_names_and_counts() {
+        let n = NonZeroU32::new(3).unwrap();
+        assert_eq!(PartitionStrategy::Sequential.name(), "sequential");
+        assert_eq!(
+            PartitionStrategy::StableHash { partitions: n }.name(),
+            "stable-hash"
+        );
+        assert_eq!(
+            PartitionStrategy::ConsistentHash { partitions: n }.name(),
+            "consistent-hash"
+        );
+        assert_eq!(PartitionStrategy::Sequential.hash_partitions(), None);
+        assert_eq!(
+            PartitionStrategy::Sequential.hash_partition("https://example.com/"),
+            None
+        );
+        assert_eq!(
+            PartitionStrategy::StableHash { partitions: n }.hash_partition("https://example.com/"),
+            Some((0x0c8b_41cf_dcb3_c914u64 % 3) as u32 + 1)
+        );
     }
 
     #[test]

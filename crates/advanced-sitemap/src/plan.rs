@@ -93,9 +93,9 @@ pub struct InputPlan {
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PartitioningPlan {
-    /// `sequential` or `stable-hash`.
+    /// `sequential`, `stable-hash` or `consistent-hash`.
     pub strategy: &'static str,
-    /// Configured partition count (stable-hash).
+    /// Configured partition count (hash strategies).
     pub partitions: Quantity,
     /// URLs per file.
     pub max_urls: u32,
@@ -103,8 +103,28 @@ pub struct PartitioningPlan {
     pub max_bytes: u64,
     /// Sitemap files the run would produce.
     pub files: Quantity,
-    /// Suggested stable-hash partition count (20% headroom), when computable.
+    /// Suggested partition count for a hash strategy (20% headroom), when computable.
     pub suggested_partitions: Option<u64>,
+}
+
+/// Effect of the configured partitioning on the previous publication,
+/// computed from its URL-level snapshot (`state.directory`).
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MigrationPlan {
+    /// URLs of the previous publication.
+    pub previous_urls: u64,
+    /// Highest partition number of the previous publication.
+    pub previous_partitions: u32,
+    /// The settings that shape the output differ from the previous run's.
+    pub config_changed: bool,
+    /// Previous URLs that the configured strategy would put in another file.
+    /// `measured` (exact) for a hash strategy; `unknown` for `sequential`,
+    /// whose placement depends on the input order.
+    pub moved: Quantity,
+    /// URLs the fullest partition would hold, counting the previous URLs
+    /// only (hash strategies).
+    pub fullest_partition_urls: Option<u64>,
 }
 
 /// What a run would do.
@@ -127,6 +147,10 @@ pub struct Plan {
     pub output_layout: &'static str,
     /// Output directory.
     pub output_directory: String,
+    /// Migration from the previous publication, when a snapshot is kept and
+    /// readable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub migration: Option<MigrationPlan>,
     /// Observations and warnings.
     pub notes: Vec<String>,
 }
@@ -262,7 +286,8 @@ pub fn explain(resolved: &ResolvedConfig, sample_size: usize) -> Result<Plan, En
             });
             ("sequential", Quantity::Unknown, files, None)
         }
-        PartitionStrategy::StableHash { partitions } => {
+        PartitionStrategy::StableHash { partitions }
+        | PartitionStrategy::ConsistentHash { partitions } => {
             let configured = u64::from(partitions.get());
             let suggested = valid_quantity
                 .value()
@@ -276,7 +301,7 @@ pub fn explain(resolved: &ResolvedConfig, sample_size: usize) -> Result<Plan, En
                 }
             }
             (
-                "stable-hash",
+                config.strategy.name(),
                 Quantity::Configured(configured),
                 Quantity::Configured(configured),
                 suggested,
@@ -317,6 +342,37 @@ pub fn explain(resolved: &ResolvedConfig, sample_size: usize) -> Result<Plan, En
         notes.push("JSON arrays are loaded in memory; use JSONL to stream large inputs".into());
     }
 
+    let migration = match config.snapshot_path() {
+        Some(path) => match measure_migration(config, &path) {
+            Ok(migration) => migration,
+            Err(error) => {
+                notes.push(format!(
+                    "the previous snapshot cannot be read ({error}); no migration cost"
+                ));
+                None
+            }
+        },
+        None => None,
+    };
+    if let Some(m) = &migration {
+        if let Quantity::Measured(moved) = m.moved {
+            if moved > 0 {
+                notes.push(format!(
+                    "PARTITION_MIGRATION_COST: {moved} of the {} previously published URLs would change file",
+                    m.previous_urls
+                ));
+            }
+        }
+        if let Some(fullest) = m.fullest_partition_urls {
+            let limit = u64::from(config.limits.max_urls());
+            if fullest * 10 > limit * 9 {
+                notes.push(format!(
+                    "PARTITION_HEADROOM_LOW: a partition would hold {fullest} of its {limit} URLs with the previous URLs alone; increase partitions"
+                ));
+            }
+        }
+    }
+
     let dedupe_memory = if config.dedupe {
         valid_quantity.value().map_or(Quantity::Unknown, |n| {
             Quantity::Estimated(n * DEDUPE_BYTES_PER_URL)
@@ -353,6 +409,7 @@ pub fn explain(resolved: &ResolvedConfig, sample_size: usize) -> Result<Plan, En
         },
         output_layout,
         output_directory: resolved.output_dir.display().to_string(),
+        migration,
         notes,
     })
 }
@@ -387,4 +444,50 @@ fn estimate_jsonl_records(
         return Ok(Quantity::Measured(0));
     }
     Ok(Quantity::Estimated(size * lines / bytes))
+}
+
+/// Reads the previous snapshot and recomputes the placement of every URL
+/// under the configured strategy. `Ok(None)` when there is no snapshot yet.
+fn measure_migration(
+    config: &crate::EngineConfig,
+    path: &std::path::Path,
+) -> std::io::Result<Option<MigrationPlan>> {
+    let Some(reader) = sitemap_snapshot::open_file(path)? else {
+        return Ok(None);
+    };
+    let config_changed =
+        *reader.config() != sitemap_snapshot::digest128(config.output_settings().as_bytes());
+    let mut loads = vec![
+        0u64;
+        config
+            .strategy
+            .hash_partitions()
+            .map_or(0, |n| n.get() as usize)
+    ];
+    let (mut previous_urls, mut previous_partitions, mut moved) = (0u64, 0u32, 0u64);
+    for record in reader {
+        let record = record?;
+        previous_urls += 1;
+        previous_partitions = previous_partitions.max(record.partition);
+        if let Some(partition) = config.strategy.hash_partition(&record.loc) {
+            if partition != record.partition {
+                moved += 1;
+            }
+            if let Some(load) = loads.get_mut(partition as usize - 1) {
+                *load += 1;
+            }
+        }
+    }
+    let hashed = config.strategy.hash_partitions().is_some();
+    Ok(Some(MigrationPlan {
+        previous_urls,
+        previous_partitions,
+        config_changed,
+        moved: if hashed {
+            Quantity::Measured(moved)
+        } else {
+            Quantity::Unknown
+        },
+        fullest_partition_urls: loads.iter().copied().max(),
+    }))
 }

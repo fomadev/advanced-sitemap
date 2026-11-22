@@ -109,7 +109,7 @@ diagnostic_codes! {
     ImageLimitExceeded => "IMAGE_LIMIT_EXCEEDED", Error;
     /// One entry alone does not fit in a sitemap file under the configured byte limit.
     EntryTooLarge => "ENTRY_TOO_LARGE", Error;
-    /// A stable-hash partition reached its URL or byte limit.
+    /// A hash partition (`stable-hash` or `consistent-hash`) reached its URL or byte limit.
     PartitionLimitExceeded => "PARTITION_LIMIT_EXCEEDED", Error;
     /// More than 50,000 sitemap files would be referenced by the index.
     IndexLimitExceeded => "INDEX_LIMIT_EXCEEDED", Error;

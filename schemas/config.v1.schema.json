@@ -68,14 +68,15 @@
         "strategy": {
           "enum": [
             "sequential",
-            "stable-hash"
+            "stable-hash",
+            "consistent-hash"
           ],
           "default": "sequential"
         },
         "partitions": {
           "type": "integer",
           "minimum": 1,
-          "description": "Required by stable-hash, refused by sequential."
+          "description": "Required by stable-hash and consistent-hash, refused by sequential."
         },
         "maxUrls": {
           "type": "integer",

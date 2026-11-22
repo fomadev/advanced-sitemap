@@ -188,6 +188,8 @@ pub enum StrategySetting {
     Sequential,
     /// Assign by `fnv1a64(loc) mod partitions`.
     StableHash,
+    /// Assign by `jump_consistent_hash(fnv1a64(loc), partitions)` (since 1.1).
+    ConsistentHash,
 }
 
 /// `partitioning` section.
@@ -197,7 +199,7 @@ pub struct PartitioningSection {
     /// Strategy. Default `sequential`.
     #[serde(default)]
     pub strategy: StrategySetting,
-    /// Number of partitions, required by `stable-hash`.
+    /// Number of partitions, required by `stable-hash` and `consistent-hash`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub partitions: Option<u32>,
     /// URLs per file. Default and maximum 50000.
@@ -362,6 +364,16 @@ mod tests {
         assert_eq!(doc.partitioning.strategy, StrategySetting::StableHash);
         assert_eq!(doc.output.index, IndexSetting::Always);
         assert_eq!(doc.source.unwrap().format, Some(SourceFormat::Jsonl));
+    }
+
+    #[test]
+    fn consistent_hash_strategy() {
+        let doc = ConfigDocument::from_json(
+            r#"{"schemaVersion": "1.1", "partitioning": {"strategy": "consistent-hash", "partitions": 12}}"#,
+        )
+        .unwrap();
+        assert_eq!(doc.partitioning.strategy, StrategySetting::ConsistentHash);
+        assert_eq!(doc.partitioning.partitions, Some(12));
     }
 
     #[test]

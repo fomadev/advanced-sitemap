@@ -148,6 +148,16 @@ fn changed_policy_equals_full_publication_stable_hash() {
 }
 
 #[test]
+fn changed_policy_equals_full_publication_consistent_hash() {
+    let strategy = PartitionStrategy::ConsistentHash {
+        partitions: NonZeroU32::new(6).unwrap(),
+    };
+    for seed in [11, 12, 0xc0de] {
+        check_equivalence(strategy, seed);
+    }
+}
+
+#[test]
 fn rerun_without_changes_publishes_nothing() {
     let strategy = PartitionStrategy::StableHash {
         partitions: NonZeroU32::new(4).unwrap(),
@@ -493,4 +503,120 @@ fn snapshot_follows_successful_publications_only() {
     assert!(c.moved > 0, "smaller files move URLs to other partitions");
     assert_eq!(c.modified + c.added + c.removed, 0);
     assert!(!state.0.join("sitemap.snapshot.tmp").exists());
+}
+
+/// ADR-0012: growing a consistent-hash layout from N to N+1 partitions
+/// moves only the URLs that the new partition takes, about 1/(N+1) of them;
+/// with stable-hash almost every URL moves.
+#[test]
+fn growing_consistent_hash_moves_urls_only_to_the_new_partition() {
+    let pages: BTreeMap<u64, u64> = (0..2_000).map(|id| (id, 0)).collect();
+    let mut moved = Vec::new();
+    for (before, after) in [
+        (
+            PartitionStrategy::ConsistentHash {
+                partitions: NonZeroU32::new(9).unwrap(),
+            },
+            PartitionStrategy::ConsistentHash {
+                partitions: NonZeroU32::new(10).unwrap(),
+            },
+        ),
+        (
+            PartitionStrategy::StableHash {
+                partitions: NonZeroU32::new(9).unwrap(),
+            },
+            PartitionStrategy::StableHash {
+                partitions: NonZeroU32::new(10).unwrap(),
+            },
+        ),
+    ] {
+        let state = StateDir::new(&format!("grow-{}", before.name()));
+        let mut first = with_state(config(before, PublishPolicy::All), &state);
+        first.limits = PartitionLimits::default();
+        let mut second = first.clone();
+        second.strategy = after;
+        let store = MemoryStore::new();
+        run(&first, &pages, &mut store.clone()).unwrap();
+        let report = run(&second, &pages, &mut store.clone()).unwrap();
+        let c = changes(&report);
+        assert!(c.previous_snapshot && c.config_changed);
+        assert_eq!((c.added, c.removed, c.modified), (0, 0, 0));
+        assert_eq!(c.moved + c.unchanged, 2_000);
+        // Every moved URL is now in the new partition (10) under jump hash.
+        if before.name() == "consistent-hash" {
+            assert_eq!(c.partitions_touched.iter().filter(|p| **p == 10).count(), 1);
+            let expected = pages
+                .keys()
+                .filter(|id| {
+                    after.hash_partition(&format!("https://example.com/p/{id}")) == Some(10)
+                })
+                .count() as u64;
+            assert_eq!(c.moved, expected);
+        }
+        moved.push(c.moved);
+    }
+    // About 200 of 2,000 (1/10) against about 1,800 (9/10).
+    assert!((150..250).contains(&moved[0]), "{moved:?}");
+    assert!(moved[1] > 1_700, "{moved:?}");
+}
+
+/// `explain` recomputes the placement of the previous URLs: exact for a hash
+/// strategy, unknown for `sequential` (order-dependent).
+#[test]
+fn explain_measures_the_migration_from_the_snapshot() {
+    use advanced_sitemap::plan::{Quantity, explain};
+    use advanced_sitemap::{InputSpec, ResolvedConfig};
+
+    let state = StateDir::new("explain");
+    let before = PartitionStrategy::ConsistentHash {
+        partitions: NonZeroU32::new(3).unwrap(),
+    };
+    let mut config = with_state(config(before, PublishPolicy::All), &state);
+    config.limits = PartitionLimits::default();
+    let pages: BTreeMap<u64, u64> = (0..300).map(|id| (id, 0)).collect();
+    run(&config, &pages, &mut MemoryStore::new()).unwrap();
+
+    let plan_for = |strategy: PartitionStrategy| {
+        let mut engine = config.clone();
+        engine.strategy = strategy;
+        let resolved = ResolvedConfig {
+            engine,
+            input: Some(InputSpec::Inline(vec![
+                serde_json::json!({"loc": "https://example.com/"}),
+            ])),
+            output_dir: state.0.join("out"),
+        };
+        explain(&resolved, 10).unwrap().migration.unwrap()
+    };
+    let same = plan_for(before);
+    assert_eq!((same.previous_urls, same.previous_partitions), (300, 3));
+    assert_eq!(same.moved, Quantity::Measured(0));
+    assert!(!same.config_changed);
+
+    let after = PartitionStrategy::ConsistentHash {
+        partitions: NonZeroU32::new(4).unwrap(),
+    };
+    let expected = pages
+        .keys()
+        .filter(|id| after.hash_partition(&format!("https://example.com/p/{id}")) == Some(4))
+        .count() as u64;
+    let grown = plan_for(after);
+    assert_eq!(grown.moved, Quantity::Measured(expected));
+    assert!(grown.config_changed);
+    assert_eq!(
+        grown.fullest_partition_urls.unwrap(),
+        (1..=4)
+            .map(|p| pages
+                .keys()
+                .filter(
+                    |id| after.hash_partition(&format!("https://example.com/p/{id}")) == Some(p)
+                )
+                .count() as u64)
+            .max()
+            .unwrap()
+    );
+
+    let sequential = plan_for(PartitionStrategy::Sequential);
+    assert_eq!(sequential.moved, Quantity::Unknown);
+    assert_eq!(sequential.fullest_partition_urls, None);
 }

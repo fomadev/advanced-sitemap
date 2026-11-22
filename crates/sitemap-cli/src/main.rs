@@ -171,7 +171,7 @@ struct CommonArgs {
     /// Partitioning strategy.
     #[arg(long, value_enum)]
     strategy: Option<Strategy>,
-    /// Partition count for the stable-hash strategy.
+    /// Partition count for the stable-hash and consistent-hash strategies.
     #[arg(long)]
     partitions: Option<u32>,
     /// Maximum URLs per file (1-50000).
@@ -198,6 +198,7 @@ enum OnInvalid {
 enum Strategy {
     Sequential,
     StableHash,
+    ConsistentHash,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -322,6 +323,7 @@ fn load(common: &CommonArgs, out: Option<&Path>) -> Result<ResolvedConfig, Failu
         doc.partitioning.strategy = match strategy {
             Strategy::Sequential => StrategySetting::Sequential,
             Strategy::StableHash => StrategySetting::StableHash,
+            Strategy::ConsistentHash => StrategySetting::ConsistentHash,
         };
     }
     if common.partitions.is_some() {
@@ -790,7 +792,20 @@ fn print_plan(plan: &Plan, format: Format) {
     );
     println!("  Sitemap files      {}", p.files);
     if let Some(n) = p.suggested_partitions {
-        println!("  Suggested parts    {n} (stable-hash, 20% headroom)");
+        println!("  Suggested parts    {n} (hash strategies, 20% headroom)");
+    }
+    if let Some(m) = &plan.migration {
+        println!(
+            "  Previous run       {} URLs in {} partitions{}",
+            m.previous_urls,
+            m.previous_partitions,
+            if m.config_changed {
+                ", settings changed"
+            } else {
+                ""
+            }
+        );
+        println!("  URLs changing file {}", m.moved);
     }
     println!("  Output layout      {}", plan.output_layout);
     println!("  Output directory   {}", plan.output_directory);

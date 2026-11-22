@@ -42,7 +42,7 @@ Command-line options override the configuration document.
 | `--hreflang-reciprocity` | `validation.hreflangReciprocity = true` |
 | `--state-dir DIR` | `state.directory` (snapshot and change report) |
 | `--max-diagnostics N` | `validation.maxDiagnostics` |
-| `--strategy sequential\|stable-hash` | `partitioning.strategy` |
+| `--strategy sequential\|stable-hash\|consistent-hash` | `partitioning.strategy` |
 | `--partitions N` | `partitioning.partitions` |
 | `--max-urls N` | `partitioning.maxUrls` |
 | `--max-bytes N` | `partitioning.maxBytes` |
@@ -111,6 +111,30 @@ is not compared. Sitemap index files are read but contribute no URL.
 Exit code 1 also when a file of either side has errors (run `inspect` on it).
 Memory is bounded: both sides are sorted with the snapshot's external sort
 in the system temporary directory.
+
+## Migration cost in `explain`
+
+With `--state-dir` (or `state.directory`) and a previous publication,
+`explain` reads the previous snapshot and recomputes where each URL would
+go with the configured strategy. The JSON plan gains:
+
+```json
+"migration": {
+  "previousUrls": 1000000,
+  "previousPartitions": 24,
+  "configChanged": true,
+  "moved": {"kind": "measured", "value": 40112},
+  "fullestPartitionUrls": 40333
+}
+```
+
+- `moved` is exact for `stable-hash` and `consistent-hash`, and `unknown`
+  for `sequential`, whose placement depends on the input order. It counts
+  previously published URLs only; new URLs are not known before the run.
+- Notes: `PARTITION_MIGRATION_COST` when URLs would change file, and
+  `PARTITION_HEADROOM_LOW` when a partition would exceed 90 % of
+  `maxUrls` with the previous URLs alone. Byte and news headroom are not
+  measured: the snapshot does not store sizes.
 
 ## Exit codes (stable contract)
 

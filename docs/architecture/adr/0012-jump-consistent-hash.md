@@ -37,3 +37,24 @@ URL du jeu de données de référence :
 - Réduire N n'est pas « stable » : les URL des partitions supprimées se
   répartissent sur les autres. Le planner le signale.
 - Les noms de fichiers restent `<stem>-<n>.xml`.
+
+## Mise à jour du 2026-11-22 : implémenté (phase C)
+
+- `PartitionStrategy::ConsistentHash` et la valeur de protocole
+  `consistent-hash`. `jump_consistent_hash` est figé par des vecteurs tirés
+  d'une transcription Python indépendante de la figure 1 de l'article. Un
+  test vérifie qu'en passant de N à N+1 aucune URL ne bouge entre anciennes
+  partitions.
+- Le calcul utilise des `f64` (division et multiplication correctement
+  arrondies selon IEEE 754) : le résultat ne dépend pas de la plateforme ;
+  les vecteurs passent en CI sous Linux, Windows et macOS.
+- `explain` chiffre la migration à partir du snapshot :
+  `PARTITION_MIGRATION_COST` (exact pour les deux stratégies par hachage)
+  et `PARTITION_HEADROOM_LOW` (sur le nombre d'URL seulement).
+- Mesuré à 1 M d'URL, de 24 à 25 partitions : 40 112 URL déplacées
+  (prédiction d'`explain` égale au rapport de `generate`), contre 959 996
+  avec `stable-hash`. Même débit que `stable-hash`.
+- Limite constatée : tous les anciens fichiers sont réécrits lors de
+  l'agrandissement, puisque chacun cède des URL à la nouvelle partition. Le
+  gain porte sur l'emplacement des URL, pas sur le nombre de fichiers
+  écrits ce jour-là.

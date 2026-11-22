@@ -75,22 +75,31 @@ pub fn resolve_config(doc: ConfigDocument, base_dir: &Path) -> Result<ResolvedCo
         StrategySetting::Sequential => {
             if doc.partitioning.partitions.is_some() {
                 return Err(config_error(
-                    "partitioning.partitions is only used by the stable-hash strategy",
+                    "partitioning.partitions is only used by the stable-hash and consistent-hash strategies",
                 ));
             }
             PartitionStrategy::Sequential
         }
-        StrategySetting::StableHash => {
+        StrategySetting::StableHash | StrategySetting::ConsistentHash => {
+            let name = if doc.partitioning.strategy == StrategySetting::StableHash {
+                "stable-hash"
+            } else {
+                "consistent-hash"
+            };
             let partitions = doc
                 .partitioning
                 .partitions
                 .and_then(NonZeroU32::new)
                 .ok_or_else(|| {
-                    config_error(
-                        "partitioning.partitions (>= 1) is required by the stable-hash strategy",
-                    )
+                    config_error(format!(
+                        "partitioning.partitions (>= 1) is required by the {name} strategy"
+                    ))
                 })?;
-            PartitionStrategy::StableHash { partitions }
+            if doc.partitioning.strategy == StrategySetting::StableHash {
+                PartitionStrategy::StableHash { partitions }
+            } else {
+                PartitionStrategy::ConsistentHash { partitions }
+            }
         }
     };
     let limits = PartitionLimits::new(

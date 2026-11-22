@@ -757,15 +757,18 @@ impl Engine {
     }
 }
 
-impl Engine {
+impl EngineConfig {
     /// Canonical description of the settings that shape the published bytes
     /// (lifecycle invariant I7). Changing its text changes every snapshot's
     /// configuration digest, so it is versioned.
-    fn output_settings(&self) -> String {
-        let c = &self.config;
+    pub(crate) fn output_settings(&self) -> String {
+        let c = self;
         let strategy = match c.strategy {
             PartitionStrategy::Sequential => "sequential".to_owned(),
             PartitionStrategy::StableHash { partitions } => format!("stable-hash:{partitions}"),
+            PartitionStrategy::ConsistentHash { partitions } => {
+                format!("consistent-hash:{partitions}")
+            }
         };
         let index = match c.layout.index {
             IndexMode::Auto => "auto",
@@ -790,6 +793,15 @@ impl Engine {
         )
     }
 
+    /// Path of the URL-level snapshot, when one is kept.
+    pub(crate) fn snapshot_path(&self) -> Option<PathBuf> {
+        self.snapshot
+            .as_ref()
+            .map(|s| s.directory.join(format!("{}.snapshot", self.layout.stem)))
+    }
+}
+
+impl Engine {
     /// Writes the new snapshot, compares it with the previous one, and keeps
     /// it only for a publishing run (it is written after the sitemaps: I3).
     fn finish_snapshot(
@@ -808,7 +820,7 @@ impl Engine {
         let temp = settings
             .directory
             .join(format!("{}.snapshot.tmp", self.config.layout.stem));
-        let config = digest128(self.output_settings().as_bytes());
+        let config = digest128(self.config.output_settings().as_bytes());
 
         let file = File::create(&temp)?;
         let mut out = io::BufWriter::new(file);
