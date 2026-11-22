@@ -7,6 +7,8 @@
 //! Validation never alters data: profiles only change which rules run and how
 //! severe their findings are.
 
+#![forbid(unsafe_code)]
+
 use std::collections::HashSet;
 
 mod news;

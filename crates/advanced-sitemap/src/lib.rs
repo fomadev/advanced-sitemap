@@ -38,6 +38,8 @@
 //! # }
 //! ```
 
+#![forbid(unsafe_code)]
+
 mod config;
 pub mod diff;
 mod engine;

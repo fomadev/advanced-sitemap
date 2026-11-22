@@ -6,6 +6,8 @@
 //! `lastmod`, `changefreq`, `priority`, then extension elements). Writers count
 //! the bytes they emit so callers can enforce file size limits exactly.
 
+#![forbid(unsafe_code)]
+
 use std::fmt;
 use std::io::{self, Write};
 

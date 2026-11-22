@@ -10,6 +10,8 @@
 //! | 3 | I/O error |
 //! | 4 | Internal error |
 
+#![forbid(unsafe_code)]
+
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 

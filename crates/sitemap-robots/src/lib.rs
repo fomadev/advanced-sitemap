@@ -8,6 +8,8 @@
 //!
 //! The engine never decides what to block: rules come from the caller.
 
+#![forbid(unsafe_code)]
+
 use std::collections::HashSet;
 use std::fmt::Write as _;
 

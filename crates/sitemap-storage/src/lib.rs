@@ -12,6 +12,8 @@
 //! | [`FsStore`] | hidden directory inside the output directory | atomic rename on the same volume | not atomic, ordered |
 //! | [`MemoryStore`] | in memory | atomic | atomic |
 
+#![forbid(unsafe_code)]
+
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 use std::fs::{self, File};

@@ -28,6 +28,8 @@
 //! record's `loc` plus the remaining suffix: sorted URLs share long prefixes,
 //! which makes the file several times smaller.
 
+#![forbid(unsafe_code)]
+
 use std::cmp::Reverse;
 use std::collections::{BTreeSet, BinaryHeap};
 use std::fs::{self, File};

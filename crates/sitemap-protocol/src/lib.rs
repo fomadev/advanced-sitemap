@@ -12,6 +12,8 @@
 //! engine accepts major 1 with a minor up to [`SUPPORTED_MINOR`]; a newer minor
 //! is refused explicitly rather than silently ignoring fields it may contain.
 
+#![forbid(unsafe_code)]
+
 mod change;
 mod config;
 mod reader;

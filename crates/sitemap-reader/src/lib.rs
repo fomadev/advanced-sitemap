@@ -24,6 +24,8 @@
 //! `complete == false`. Only I/O errors of the underlying source are returned
 //! as `Err`.
 
+#![forbid(unsafe_code)]
+
 use std::collections::{BTreeMap, HashSet};
 use std::error::Error as StdError;
 use std::fmt;
