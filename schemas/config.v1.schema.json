@@ -131,10 +131,11 @@
         "publish": {
           "enum": [
             "all",
-            "changed"
+            "changed",
+            "auto"
           ],
           "default": "all",
-          "description": "changed: files whose bytes equal the published file are not rewritten (since 1.1)."
+          "description": "all: write every file (execution mode full). changed: files whose bytes equal the published file are not rewritten (skip-unchanged, since 1.1). auto: changed once a publication exists, all before (since 1.1)."
         }
       }
     },

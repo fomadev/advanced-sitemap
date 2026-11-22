@@ -63,6 +63,7 @@ practice is not followed. `info` is informational.
 | `STALE_ARTIFACT` | info | A file from the previous manifest is no longer produced. It is not deleted |
 | `DIAGNOSTICS_TRUNCATED` | info | The list reached `maxDiagnostics`. Counts are exact |
 | `SNAPSHOT_INVALID` | warning | The previous snapshot cannot be read (damaged, truncated or another format). It is ignored and replaced |
+| `SNAPSHOT_STALE` | warning | The previous snapshot describes another publication than the one in place (a run was interrupted after publishing): the change report compares with an older state. This run replaces the snapshot |
 
 ## Extensions
 
