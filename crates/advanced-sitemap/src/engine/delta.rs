@@ -56,6 +56,7 @@ impl Engine {
     {
         let description = store.describe();
         let config = &self.config;
+        let _state_lock = self.lock_destination(store)?;
         if config.strategy.hash_partitions().is_none() {
             return Err(refuse(
                 "the delta mode needs the stable-hash or consistent-hash strategy",

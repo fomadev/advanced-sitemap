@@ -48,10 +48,13 @@ fn json(output: &Output) -> serde_json::Value {
     })
 }
 
+/// Entries of an output directory, without the (empty, hidden) lock file
+/// that every writing run keeps there.
 fn listing(dir: &Path) -> Vec<String> {
     let mut names: Vec<String> = fs::read_dir(dir)
         .map(|it| {
             it.map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                .filter(|n| n != ".advanced-sitemap.lock")
                 .collect()
         })
         .unwrap_or_default();

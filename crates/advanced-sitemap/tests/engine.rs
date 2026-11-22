@@ -253,6 +253,15 @@ fn file_store_end_to_end_and_well_formed() {
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
     names.sort();
+    // The lock file stays (empty, hidden): removing it on release would let
+    // two processes believe they both hold the lock.
+    assert_eq!(
+        fs::metadata(dir.join(".advanced-sitemap.lock"))
+            .unwrap()
+            .len(),
+        0
+    );
+    names.retain(|n| n != ".advanced-sitemap.lock");
     assert_eq!(
         names,
         [
