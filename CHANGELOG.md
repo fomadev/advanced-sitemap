@@ -17,6 +17,15 @@ contain breaking changes.
 
 ### Added
 
+- Lot F (final validation): CI tests on ARM64 Linux and Windows
+  (`ubuntu-24.04-arm`, `windows-11-arm`) and a `determinism` job that
+  requires the same output bytes on every platform after `generate` and
+  `apply`. A `Release candidate` workflow builds and packages the CLI for
+  seven targets with `SHA256SUMS`, checks each native binary against the
+  conformance fixtures, and publishes nothing. Final reports in
+  `docs/production/` (final audit, release readiness, performance,
+  compatibility, known limitations, operations checklist).
+
 - Lot E: `advanced-sitemap doctor` and `Engine::doctor`, a read-only check
   of the output and state directories (running process, interrupted run,
   published files against the manifest by size and digest, snapshot
@@ -50,6 +59,12 @@ contain breaking changes.
   each file.
 
 ### Fixed
+
+- Windows: publishing over a file that another program holds open without
+  delete sharing (some web servers, scanners) failed at once with "access
+  denied". The replacement is now retried for about 2.3 seconds; if the
+  file stays held, the error names it and says how many files were
+  already replaced.
 
 - A control character forbidden by XML in a news or video text passed
   validation, then stopped the run with an internal error in the XML

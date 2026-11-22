@@ -4,18 +4,18 @@ Priorités : **P0** perte ou corruption de données, faille critique,
 publication incorrecte ; **P1** bloque une utilisation en production ;
 **P2** limitation importante mais contournable ; **P3** amélioration.
 
-État au 2026-11-22, après le lot D.
+État au 2026-11-22, après le lot F.
 
 | ID | Risque | Priorité | État | Lot | Notes |
 |---|---|---|---|---|---|
 | R1 | Exécutions concurrentes sur le même dossier : publications entrelacées, perte d'un flux `apply` | P1 | **Corrigé** | A | Verrou système, libéré à la mort du processus |
 | R2 | Publication d'un ensemble de fichiers non atomique : fenêtre où une URL est dans deux fichiers ou dans aucun | P2 | Ouvert, documenté | Décision | Converge à l'exécution suivante ; révisions + pointeur à décider |
 | R3 | Renommages non durables sous Linux en cas de coupure | P2 | **Corrigé** (Unix) | A | Windows : dépend du système de fichiers |
-| R4 | Résistance à une coupure électrique non démontrée | P2 | Ouvert | F | Pas de banc de coupure ; garanties fondées sur `fsync`/`rename` |
+| R4 | Résistance à une coupure électrique non démontrée | P2 | Ouvert, réduit | F | Pas de banc de coupure ; garanties fondées sur `fsync`/`rename`. Arrêts brutaux du processus testés (12 points, aucun fichier tronqué, ensemble mixte détecté par `doctor` et réparé) |
 | R5 | Snapshot non relié à la publication qu'il décrit (publication interrompue avant son remplacement) | P2 | **Corrigé** | B | Le manifest liste l'empreinte de chaque fichier et le snapshot v2 celle du manifest : `SNAPSHOT_STALE` et refus d'`apply` |
 | R6 | Dossiers de staging orphelins | P2 | **Corrigé** | A | |
 | R7 | MSRV déclarée fausse et non vérifiée | P2 | **Corrigé** | A | 1.89, job CI |
-| R8 | Sous Windows, remplacer un sitemap ouvert par un autre programme (serveur web) peut échouer : ensemble mélangé | P2 | Ouvert | F | À tester ; documenter ou réessayer |
+| R8 | Sous Windows, remplacer un sitemap ouvert par un autre programme (serveur web) peut échouer : ensemble mélangé | P2 | **Corrigé** | F | Reproduit (accès refusé) ; nouvelle tentative pendant environ 2,3 s, puis erreur qui nomme le fichier ; `doctor` montre l'état, l'exécution suivante répare |
 | R9 | Le flux de `apply` est tenu en mémoire (une entrée par URL changée) | P2 | **Corrigé** | C | 806 octets par URL mesurés ; borne `state.maxFeedOperations` (500 000 par défaut), refus avant écriture |
 | R10 | Aucun fuzzing (lecteur XML, protocole, décodeur de snapshot, flux) | P1 pour une release stable | **Corrigé** | D | Fuzzing stable reproductible à chaque PR, `cargo fuzz` hebdomadaire ; un défaut trouvé et corrigé (R25) |
 | R25 | Caractère interdit par XML dans un texte news ou vidéo : validé puis refusé par l'écrivain, arrêt sur erreur interne | P1 | **Corrigé** | D | Trouvé par fuzzing ; règle partagée validation/écrivain |
@@ -27,7 +27,7 @@ publication incorrecte ; **P1** bloque une utilisation en production ;
 | R23 | Le modèle de coût est calibré sur une seule machine | P3 | Ouvert, documenté | F | Recalibré au lot C sur une série homogène (1 M et 10 M) ; reste une surestimation de 26 % des générations complètes à 10 M ; seule la comparaison entre modes vaut sur un autre matériel |
 | R15 | Tests à 10 M et 50 M d'URL non faits | P2 | **Corrigé pour 10 M** ; 50 M ouvert | C | 10 M mesuré (mémoire bornée vérifiée) ; 50 M impossible sur la machine de référence (10 Go libres), coûts extrapolés |
 | R24 | Une seule unité de calcul utilisée : la validation (dont l'analyse des URL) domine le temps CPU | P3 | Ouvert | — | Gain possible par validation parallèle avec fusion ordonnée ; à mesurer avant de décider |
-| R16 | Linux ARM64 et Windows ARM64 non testés | P2 | Ouvert | F | macOS ARM64 testé en CI |
+| R16 | Linux ARM64 et Windows ARM64 non testés | P2 | **Corrigé** | F | Tests et déterminisme en CI sur `ubuntu-24.04-arm` et `windows-11-arm` ; macOS x86_64 seulement compilé |
 | R17 | API Rust publique non stabilisée (structs publiques à champs publics, enums non `#[non_exhaustive]`) | P1 pour 1.0 | **Corrigé** | E | Types publics `#[non_exhaustive]` imposés par clippy, constructeurs, `EngineError::kind`, politique `semver-policy.md` ; comparaison automatique d'API (`cargo semver-checks`) seulement après une première version publiée |
 | R18 | ADR-0010 à 0013 non approuvés ; format du snapshot dépendant de l'ADR-0011 | P1 pour 1.0 | Ouvert | Décision | |
 | R19 | Licence FPL : clarifications et titulaire des droits non confirmés | P1 pour une distribution | Ouvert | Décision | Aucun package publié |

@@ -801,3 +801,126 @@ fn doctor_reports_checks_and_exit_codes() {
         .unwrap();
     assert_eq!(files["status"], "error", "{files}");
 }
+
+/// A process killed at any point of a publication (as in a crash) never
+/// leaves a truncated or partly written sitemap in place: every published
+/// file is a complete document, old or new. The next run repairs the set.
+/// (A power cut also depends on the disk honouring fsync; see R4.)
+#[test]
+fn killing_generate_never_leaves_a_damaged_file() {
+    let temp = TempDir::new("kill");
+    // Two versions of the input, so that each run replaces every file with
+    // different bytes and a kill can leave old and new files side by side.
+    let inputs: Vec<PathBuf> = (1..=2)
+        .map(|month| {
+            let path = temp.0.join(format!("input-{month}.jsonl"));
+            let mut lines = String::new();
+            for i in 0..30_000 {
+                lines.push_str(&format!(
+                    "{{\"loc\":\"https://example.com/p/{i}\",\"lastmod\":\"2026-0{month}-{:02}\"}}\n",
+                    1 + i % 28
+                ));
+            }
+            fs::write(&path, lines).unwrap();
+            path
+        })
+        .collect();
+    let out = temp.0.join("out");
+    let generate = |run: usize| {
+        let mut command = bin();
+        command
+            .args(["--format", "json", "generate", "--input"])
+            .arg(&inputs[run % 2])
+            .arg("--out")
+            .arg(&out)
+            .args([
+                "--public-base-url",
+                "https://example.com/",
+                "--max-urls",
+                "5000",
+            ]);
+        command
+    };
+    let started = std::time::Instant::now();
+    assert_eq!(code(&generate(0).output().unwrap()), 0);
+    let duration = started.elapsed().as_millis() as u64;
+
+    // Kill points spread over a whole run, up to its very end (publication).
+    let (mut mixed, mut completed) = (0, 0);
+    let manifest = || fs::read(out.join("sitemap.manifest.json")).unwrap();
+    let percents = [5u64, 20, 40, 60, 75, 85, 90, 95, 98, 100, 110, 130];
+    let mut published = 0;
+    for percent in percents {
+        let delay_ms = duration * percent / 100;
+        let before = manifest();
+        let mut child = generate(published + 1)
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+        let _ = child.kill();
+        let _ = child.wait();
+        if manifest() != before {
+            completed += 1;
+            published += 1;
+        }
+
+        let files: Vec<PathBuf> = listing(&out)
+            .into_iter()
+            .filter(|n| n.ends_with(".xml"))
+            .map(|n| out.join(n))
+            .collect();
+        assert!(
+            files.len() > 1,
+            "files disappeared after a kill at {delay_ms} ms"
+        );
+        let inspected = bin()
+            .args(["--format", "json", "inspect"])
+            .args(&files)
+            .output()
+            .unwrap();
+        assert_eq!(
+            json(&inspected)["status"],
+            "valid",
+            "damaged file after a kill at {delay_ms} ms"
+        );
+        let doctor = bin()
+            .args(["--format", "json", "doctor", "--out"])
+            .arg(&out)
+            .args([
+                "--public-base-url",
+                "https://example.com/",
+                "--max-urls",
+                "5000",
+            ])
+            .output()
+            .unwrap();
+        if json(&doctor)["status"] == "error" {
+            mixed += 1;
+        }
+    }
+    eprintln!(
+        "{} kills over {duration} ms runs: {completed} after publication, {mixed} left a mixed set (reported by doctor)",
+        percents.len()
+    );
+    // The kill points cover the end of a run: some before, some after it.
+    assert!(completed < percents.len(), "every run completed");
+    assert_eq!(code(&generate(0).output().unwrap()), 0);
+    let doctor = bin()
+        .args(["--format", "json", "doctor", "--out"])
+        .arg(&out)
+        .args([
+            "--public-base-url",
+            "https://example.com/",
+            "--max-urls",
+            "5000",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(
+        json(&doctor)["status"],
+        "ok",
+        "{}",
+        String::from_utf8_lossy(&doctor.stdout)
+    );
+}

@@ -14,7 +14,7 @@ première (voir `semver-policy.md`).
 | Validation (`sitemap-validation`, `sitemap-model`) | READY | 38 tests ; profils standard et strict ; codes stables documentés ; aller-retour sur 3 000 entrées aléatoires ; fuzzing (un défaut corrigé : caractères de contrôle dans les textes d'extensions) | — |
 | Écriture XML (`sitemap-xml`) | READY | Sortie déterministe octet par octet ; fixtures validées par xmllint et les XSD officiels (sitemap, index, vidéo, news) et par un vérificateur Python indépendant | — |
 | Partitionnement et index (`sitemap-index`) | READY | Limites exactes (URL, octets, 1 000 news) ; trois stratégies figées par vecteurs ; 18 tests | Index d'index (R21) |
-| Publication fichiers (`sitemap-storage`) | NEEDS HARDENING | Staging, `fsync` + `rename`, verrou (lot A), nettoyage des orphelins, injection de pannes | Atomicité d'ensemble (R2), coupure électrique (R4), Windows fichier ouvert (R8) |
+| Publication fichiers (`sitemap-storage`) | NEEDS HARDENING | Staging, `fsync` + `rename`, verrou (lot A), nettoyage des orphelins, injection de pannes, arrêts brutaux du processus, fichier tenu ouvert sous Windows (lot F) | Atomicité d'ensemble (R2), banc de coupure électrique (R4) |
 | Moteur `generate` / `validate` | READY | Streaming à mémoire bornée mesuré jusqu'à 10 M d'URL (5 Mio sans déduplication, 416 Mio avec) ; tests de bout en bout ; codes de sortie stables ; limites documentées (`docs/concepts/limits.md`) | 50 M non mesuré (R15) |
 | Extensions images, vidéo, news | READY | Validées par les XSD Google en CI ; balises dépréciées refusées et documentées | — |
 | hreflang (validation, réciprocité) | READY | Codes dédiés ; coût mesuré (110 octets par lien) | — |
@@ -28,4 +28,4 @@ première (voir `semver-policy.md`).
 | CLI (`sitemap-cli`) | READY | 15 tests de bout en bout ; JSON et humain ; codes 0 à 4 et `error.kind` documentés ; `doctor` (contrôle en lecture seule) | — |
 | API Rust publique | NEEDS HARDENING | Types publics `#[non_exhaustive]` (clippy l'impose), constructeurs, `EngineError::kind`/`source`/`is_retryable`, `Engine::doctor` ; politique SemVer ; codes de diagnostic figés par test | Comparaison d'API automatique après la première version (F) ; ADR à approuver (R18) |
 | Bindings (Node, Python, PHP) | BLOCKED | Non commencés, hors périmètre de la version stable du cœur | Stabilisation du protocole et de l'API |
-| Distribution (crates.io, binaires) | BLOCKED | `publish = false` partout | Licence (R19), décision de publication |
+| Distribution (crates.io, binaires) | BLOCKED | Version candidate construite par la CI pour 7 cibles, vérifiée contre les fixtures, `SHA256SUMS` ; `publish = false` partout | Licence (R19), ADR (R18), décision de publication |

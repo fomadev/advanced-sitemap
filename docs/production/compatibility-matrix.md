@@ -1,5 +1,8 @@
 # Matrice de compatibilité
 
+État du lot A. Pour l'état actuel des plateformes (ARM64 compris) et des
+formats, voir le [rapport de compatibilité](compatibility-report.md).
+
 ## Plateformes
 
 | Plateforme | Architecture | Vérification | Statut |
