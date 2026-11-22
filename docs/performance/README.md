@@ -111,6 +111,29 @@ by one `lastmod`: `diff` found exactly 1 modified URL and 999,999 unchanged.
 `inspect` alone on the same two directories takes 19 to 25 s, so reading
 and validating dominate. Peak working set: 94 MiB.
 
+## `consistent-hash` and migration cost
+
+1 M URL dataset, 24 partitions, `validate` with a warm cache:
+
+| Strategy | Time | Peak | URLs per file (min to max) |
+|---|---|---|---|
+| `stable-hash` | 3.7 s | 57 MiB | 41,383 to 42,004 |
+| `consistent-hash` | 3.5 to 3.8 s | 57 MiB | 41,136 to 42,029 |
+
+Growing from 24 to 25 partitions after a `generate` with `--state-dir`:
+
+| | `consistent-hash` 25 | `stable-hash` 25 |
+|---|---|---|
+| URLs changing file, predicted by `explain` | 40,112 (4.0 %; 1/25 = 4 %) | 959,996 (96.0 %) |
+| `explain` time with the 1 M URL snapshot | 0.7 to 0.8 s, 5 MiB | 0.7 s, 5 MiB |
+
+The following `generate --strategy consistent-hash --partitions 25`
+reported exactly 40,112 moved URLs, as predicted. It still rewrote all 27
+files (25 sitemaps, index, manifest): every old partition gave about 4 % of
+its URLs to the new one. The gain is in URL placement (most URLs stay in
+the same file for crawlers, and the change report stays small), not in
+fewer files written on that run.
+
 ## hreflang reciprocity
 
 `validate` on the 1 M URL dataset (100,000 entries with 2 alternates, so
