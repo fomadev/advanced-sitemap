@@ -1,0 +1,1 @@
+{"schemaVersion":"1.1","site":"https://example.com","publicBaseUrl":"https://example.com/s/","partitioning":{"strategy":"consistent-hash","partitions":8},"output":{"publish":"auto","extensions":["video","news"]},"state":{"directory":"state","maxFeedOperations":10},"robots":{"groups":[{"userAgents":["*"],"disallow":["/admin"]}]}}

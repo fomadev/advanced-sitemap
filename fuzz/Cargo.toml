@@ -1,0 +1,60 @@
+# Coverage-guided fuzz targets for `cargo fuzz` (nightly Rust, libFuzzer).
+# Outside the workspace: they need nightly and libFuzzer, and are run by
+# the `fuzz` workflow, never shipped. Seed corpora are in `corpus/`.
+[package]
+name = "advanced-sitemap-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+advanced-sitemap = { path = "../crates/advanced-sitemap" }
+sitemap-snapshot = { path = "../crates/sitemap-snapshot" }
+
+[[bin]]
+name = "xml_reader"
+path = "fuzz_targets/xml_reader.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "url_record"
+path = "fuzz_targets/url_record.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "change_feed"
+path = "fuzz_targets/change_feed.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "config"
+path = "fuzz_targets/config.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "snapshot"
+path = "fuzz_targets/snapshot.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "scalars"
+path = "fuzz_targets/scalars.rs"
+test = false
+doc = false
+bench = false
