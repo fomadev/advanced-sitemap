@@ -1,0 +1,51 @@
+name: Fuzz
+
+# Coverage-guided fuzzing with cargo-fuzz (nightly, libFuzzer), weekly and
+# on demand. Each target starts from its committed seed corpus in
+# fuzz/corpus/; a crashing input is uploaded as an artifact. The quick,
+# reproducible stable-Rust fuzzing runs on every pull request in CI.
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  # Short runs (60 s per target) when the fuzzed code or the targets change.
+  pull_request:
+    paths:
+      - "fuzz/**"
+      - "crates/sitemap-reader/**"
+      - "crates/sitemap-protocol/**"
+      - "crates/sitemap-snapshot/**"
+      - "crates/sitemap-validation/**"
+      - ".github/workflows/fuzz.yml"
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Seconds per target
+        default: "300"
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [xml_reader, url_record, change_feed, config, snapshot, scalars]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install nightly and cargo-fuzz
+        run: |
+          rustup toolchain install nightly --profile minimal
+          cargo +nightly install cargo-fuzz --locked
+      - name: Fuzz ${{ matrix.target }}
+        run: |
+          cd fuzz
+          cargo +nightly fuzz run ${{ matrix.target }} corpus/${{ matrix.target }} -- \
+            -max_total_time=${{ github.event.inputs.seconds || (github.event_name == 'pull_request' && '60') || '300' }} -max_len=65536
+      - name: Upload crashing inputs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fuzz-${{ matrix.target }}
+          path: fuzz/artifacts/

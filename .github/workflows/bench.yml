@@ -12,6 +12,7 @@ jobs:
   criterion:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: rustup show active-toolchain
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install pinned toolchain
+        run: rustup toolchain install
       - run: cargo bench -p advanced-sitemap --bench pipeline --locked
