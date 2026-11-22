@@ -626,3 +626,111 @@ fn apply_rewrites_only_the_touched_partition() {
     assert!(changed.len() <= 5, "{changed:?}"); // at most 2 partitions, index, manifest
     assert!(changed.contains(&"sitemap.xml".to_owned()), "{changed:?}");
 }
+
+#[test]
+fn execution_mode_state_token_and_apply_plan() {
+    let temp = TempDir::new("planner");
+    let mut locs: Vec<String> = (0..200)
+        .map(|i| format!("https://example.com/p/{i}"))
+        .collect();
+    locs.sort();
+    let lines: String = locs
+        .iter()
+        .map(|loc| format!("{{\"loc\":\"{loc}\"}}\n"))
+        .collect();
+    fs::write(temp.0.join("urls.jsonl"), lines).unwrap();
+    let config = temp.0.join("config.json");
+    fs::write(
+        &config,
+        r#"{"schemaVersion": "1.1", "publicBaseUrl": "https://example.com/",
+            "partitioning": {"strategy": "consistent-hash", "partitions": 5},
+            "source": {"path": "urls.jsonl"},
+            "output": {"directory": "out", "publish": "auto"},
+            "state": {"directory": "state"}}"#,
+    )
+    .unwrap();
+    let feed = temp.0.join("changes.jsonl");
+    fs::write(
+        &feed,
+        "{\"op\":\"delete\",\"loc\":\"https://example.com/p/3\"}\n",
+    )
+    .unwrap();
+    let run = |args: &[&str]| {
+        bin()
+            .args(["--format", "json"])
+            .args(args)
+            .arg("--config")
+            .arg(&config)
+            .output()
+            .unwrap()
+    };
+
+    let first = json(&run(&["generate"]));
+    assert_eq!(first["execution"]["chosen"], "full");
+    let plan = json(&run(&["explain"]));
+    assert_eq!(plan["execution"]["chosen"], "skip-unchanged");
+    let token = plan["execution"]["stateToken"].as_str().unwrap().to_owned();
+
+    // A wrong token is refused before anything is written.
+    let stale = run(&[
+        "generate",
+        "--expect-state",
+        "00000000000000000000000000000000",
+    ]);
+    assert_eq!(code(&stale), 2);
+    assert_eq!(json(&stale)["error"]["kind"], "state-changed");
+    let ok = run(&[
+        "generate",
+        "--execution-mode",
+        "auto",
+        "--expect-state",
+        &token,
+    ]);
+    assert_eq!(code(&ok), 0, "{}", String::from_utf8_lossy(&ok.stdout));
+    assert_eq!(json(&ok)["execution"]["chosen"], "skip-unchanged");
+
+    // Plan of an apply: the delta mode is eligible and touches one partition.
+    let apply_plan = run(&["explain", "--changes", feed.to_str().unwrap()]);
+    assert_eq!(
+        code(&apply_plan),
+        0,
+        "{}",
+        String::from_utf8_lossy(&apply_plan.stdout)
+    );
+    let apply_plan = json(&apply_plan);
+    assert_eq!(apply_plan["requested"], "delta");
+    assert_eq!(apply_plan["candidates"][0]["mode"], "delta");
+    assert_eq!(apply_plan["candidates"][0]["eligible"], true);
+    assert_eq!(
+        apply_plan["candidates"][0]["partitionsAffected"]["value"],
+        1
+    );
+    let token = apply_plan["stateToken"].as_str().unwrap();
+    let applied = run(&[
+        "apply",
+        "--changes",
+        feed.to_str().unwrap(),
+        "--expect-state",
+        token,
+    ]);
+    assert_eq!(
+        code(&applied),
+        0,
+        "{}",
+        String::from_utf8_lossy(&applied.stdout)
+    );
+    assert_eq!(json(&applied)["changes"]["removed"], 1);
+
+    // Human output names the decision.
+    let human = bin()
+        .arg("explain")
+        .arg("--config")
+        .arg(&config)
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&human.stdout);
+    assert!(
+        text.contains("Execution") && text.contains("State token"),
+        "{text}"
+    );
+}
