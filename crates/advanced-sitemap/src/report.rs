@@ -133,6 +133,21 @@ pub struct GenerationReport {
     /// Changes since the previous snapshot, when snapshots are enabled.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub changes: Option<ChangesReport>,
+    /// Execution mode used and why (`generate`, `validate`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution: Option<ExecutionDecision>,
+}
+
+/// The execution mode of a run.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionDecision {
+    /// `full`, `skip-unchanged` or `auto`.
+    pub requested: &'static str,
+    /// `full` or `skip-unchanged`.
+    pub chosen: &'static str,
+    /// Why this mode was used.
+    pub reason: String,
 }
 
 /// Changes between the previous snapshot and this run.

@@ -57,7 +57,8 @@ pub use engine::{
 };
 pub use manifest::{Manifest, ManifestArtifact};
 pub use report::{
-    ArtifactKind, ArtifactReport, ChangesReport, GenerationReport, RunStatus, SeverityCounts, Stats,
+    ArtifactKind, ArtifactReport, ChangesReport, ExecutionDecision, GenerationReport, RunStatus,
+    SeverityCounts, Stats,
 };
 pub use sitemap::{Sitemap, SitemapBuilder, SitemapError};
 

@@ -258,6 +258,9 @@ pub enum PublishSetting {
     All,
     /// Republish only changed files.
     Changed,
+    /// `changed` when a previous publication exists, `all` otherwise
+    /// (since 1.1). The report says which one was used and why.
+    Auto,
 }
 
 /// An optional sitemap extension.
