@@ -56,7 +56,7 @@ practice is not followed. `info` is informational.
 | Code | Severity | Meaning |
 |---|---|---|
 | `ENTRY_TOO_LARGE` | error | One entry alone does not fit under `maxBytes` |
-| `PARTITION_LIMIT_EXCEEDED` | error | A `stable-hash` partition is full. Always fails the run. Increase `partitions` |
+| `PARTITION_LIMIT_EXCEEDED` | error | A `stable-hash` or `consistent-hash` partition is full. Always fails the run. Increase `partitions` |
 | `INDEX_LIMIT_EXCEEDED` | error | More than 50,000 sitemap files would be referenced |
 | `PUBLIC_BASE_URL_MISSING` | error | An index is needed but `publicBaseUrl` is not set |
 | `EMPTY_SITEMAP` | warning | No URL was written |

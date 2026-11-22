@@ -1,6 +1,7 @@
 //! FNV-1a, 64-bit variant.
 //!
-//! Used to assign URLs to stable-hash partitions. The function is part of the
+//! Used to assign URLs to hash partitions (`stable-hash` and the key of
+//! `consistent-hash`). The function is part of the
 //! persisted-output contract: changing it would move URLs between partitions.
 //! It is frozen by the test vectors below and must never change.
 
