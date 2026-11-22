@@ -6,6 +6,15 @@ contain breaking changes.
 
 ## [Unreleased]
 
+### Decided
+
+- ADR-0010 to ADR-0013 are accepted (lifecycle invariants, BLAKE3-128
+  persisted digests and snapshot v2, `consistent-hash`, published files as
+  the state of `apply`). Their formats are now part of the compatibility
+  contract.
+- License: the Fordima Public License v1.0 is kept unchanged; Fordima Inc.
+  is the rights holder.
+
 ### Changed (breaking for Rust callers)
 
 - Lot E (API): exported structs with public fields and enums that can grow
