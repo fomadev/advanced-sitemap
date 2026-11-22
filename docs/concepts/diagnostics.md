@@ -62,6 +62,7 @@ practice is not followed. `info` is informational.
 | `EMPTY_SITEMAP` | warning | No URL was written |
 | `STALE_ARTIFACT` | info | A file from the previous manifest is no longer produced. It is not deleted |
 | `DIAGNOSTICS_TRUNCATED` | info | The list reached `maxDiagnostics`. Counts are exact |
+| `SNAPSHOT_INVALID` | warning | The previous snapshot cannot be read (damaged, truncated or another format). It is ignored and replaced |
 
 ## Extensions
 

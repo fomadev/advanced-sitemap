@@ -49,11 +49,12 @@ mod sitemap;
 
 pub use config::{InputSpec, ResolvedConfig, open_input, resolve_config};
 pub use engine::{
-    Engine, EngineConfig, EngineError, InvalidPolicy, PublishPolicy, RunMode, records,
+    Engine, EngineConfig, EngineError, InvalidPolicy, PublishPolicy, RunMode, SnapshotSettings,
+    records,
 };
 pub use manifest::{Manifest, ManifestArtifact};
 pub use report::{
-    ArtifactKind, ArtifactReport, GenerationReport, RunStatus, SeverityCounts, Stats,
+    ArtifactKind, ArtifactReport, ChangesReport, GenerationReport, RunStatus, SeverityCounts, Stats,
 };
 pub use sitemap::{Sitemap, SitemapBuilder, SitemapError};
 

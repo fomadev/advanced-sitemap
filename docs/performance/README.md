@@ -82,6 +82,27 @@ run), about 100 k URL/s or 17 MB/s, single-threaded. Peak working set while
 inspecting one 50,000-URL file: 4.8 MiB. All 1,000,000 entries were read
 back as valid.
 
+## URL-level snapshot (`--state-dir`)
+
+Measured with `generate --skip-unchanged` on the 1 M URL dataset, output
+already published, and `validate` at 5 M:
+
+| Run | Without snapshot | With snapshot |
+|---|---|---|
+| 1 M, rerun without changes | 3.9 to 4.7 s, 57 MiB | 8.6 to 10.3 s, 111 MiB |
+| 5 M, `validate` (snapshot built and compared, not kept) | 18.4 s, 210 MiB | 35.5 s, 246 MiB |
+
+- The snapshot takes 44.8 MB at 1 M URLs (about 45 bytes per URL, after
+  prefix compression of the sorted URLs; 86.7 MB without it, and 47.4 s at
+  5 M).
+- Memory is bounded by the sort budget (64 MiB by default): at 5 M URLs
+  the peak grows by 36 MiB only, because sorted runs are spilled to the
+  state directory (invariant I8).
+- The extra time is disk I/O on this slow drive: sorted runs, the new
+  snapshot (synced before its rename), and reading both snapshots for the
+  diff. Hashing costs about 6 % (ADR-0011). Not optimized yet; the option
+  is off by default.
+
 ## hreflang reciprocity
 
 `validate` on the 1 M URL dataset (100,000 entries with 2 alternates, so

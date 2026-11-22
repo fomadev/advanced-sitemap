@@ -250,6 +250,14 @@ impl<'s> Partitioner<'s> {
         }
     }
 
+    /// The encoded `<url>` block of the last entry passed to [`push`]
+    /// (complete when `push` succeeded).
+    ///
+    /// [`push`]: Partitioner::push
+    pub fn last_block(&self) -> &[u8] {
+        &self.scratch
+    }
+
     /// Places one entry. Returns the 1-based partition number.
     pub fn push(&mut self, entry: &UrlEntry) -> Result<u32, PushError> {
         self.namespaces

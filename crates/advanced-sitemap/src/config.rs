@@ -14,7 +14,7 @@ use sitemap_protocol::{
 use sitemap_validation::{ValidationMode, ValidationOptions};
 use sitemap_xml::Namespaces;
 
-use crate::engine::{EngineConfig, EngineError, InvalidPolicy, PublishPolicy};
+use crate::engine::{EngineConfig, EngineError, InvalidPolicy, PublishPolicy, SnapshotSettings};
 
 /// Where records come from.
 #[derive(Clone, Debug)]
@@ -172,6 +172,13 @@ pub fn resolve_config(doc: ConfigDocument, base_dir: &Path) -> Result<ResolvedCo
                 }),
             }),
         robots: doc.robots,
+        snapshot: doc.state.map(|state| {
+            let mut settings = SnapshotSettings::new(base_dir.join(state.directory));
+            if let Some(max) = state.max_listed {
+                settings.max_listed = max as usize;
+            }
+            settings
+        }),
     };
 
     Ok(ResolvedConfig {

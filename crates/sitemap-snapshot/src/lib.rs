@@ -17,13 +17,16 @@
 //! ```text
 //! magic        8 bytes  "ASNAPv1\n"
 //! config      16 bytes  digest of the settings that shape the output
-//! records      *        loc length (u16 LE, >= 1) | loc | content (16) | partition (u32 LE)
-//! end          2 bytes  0x0000 (a loc length of zero)
+//! records      *        shared (u16 LE) | suffix length (u16 LE) | suffix | content (16) | partition (u32 LE)
+//! end          2 bytes  0xFFFF (in place of `shared`)
 //! count        8 bytes  number of records (u64 LE)
 //! checksum    32 bytes  BLAKE3 of every preceding byte
 //! ```
 //!
-//! Records are sorted by `loc` bytes, then content, then partition.
+//! Records are sorted by `loc` bytes, then content, then partition. Each
+//! `loc` is stored as the number of leading bytes it shares with the previous
+//! record's `loc` plus the remaining suffix: sorted URLs share long prefixes,
+//! which makes the file several times smaller.
 
 use std::cmp::Reverse;
 use std::collections::{BTreeSet, BinaryHeap};
@@ -50,7 +53,9 @@ pub fn to_hex(digest: &Digest) -> String {
 
 const MAGIC: &[u8; 8] = b"ASNAPv1\n";
 /// Largest `loc` length the format can store, in bytes.
-pub const MAX_LOC_BYTES: usize = u16::MAX as usize;
+pub const MAX_LOC_BYTES: usize = u16::MAX as usize - 1;
+/// `shared` value that marks the end of the records.
+const END: u16 = u16::MAX;
 
 /// One published URL.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -74,38 +79,77 @@ fn invalid(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.into())
 }
 
-fn write_record(out: &mut impl Write, record: &Record) -> io::Result<()> {
-    if record.loc.is_empty() || record.loc.len() > MAX_LOC_BYTES {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "loc must have 1 to 65535 bytes",
-        ));
-    }
-    out.write_all(&(record.loc.len() as u16).to_le_bytes())?;
-    out.write_all(record.loc.as_bytes())?;
-    out.write_all(&record.content)?;
-    out.write_all(&record.partition.to_le_bytes())
+/// Encodes and decodes records with prefix compression against the previous
+/// record of the same stream.
+#[derive(Default)]
+struct Codec {
+    previous: Vec<u8>,
 }
 
-/// Reads one record; `Ok(None)` at the end marker.
-fn read_record(input: &mut impl Read) -> io::Result<Option<Record>> {
-    let mut len = [0u8; 2];
-    input.read_exact(&mut len)?;
-    let len = u16::from_le_bytes(len) as usize;
-    if len == 0 {
-        return Ok(None);
+impl Codec {
+    fn write(&mut self, out: &mut impl Write, record: &Record) -> io::Result<()> {
+        let loc = record.loc.as_bytes();
+        if loc.is_empty() || loc.len() > MAX_LOC_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "loc must have 1 to 65534 bytes",
+            ));
+        }
+        let shared = self
+            .previous
+            .iter()
+            .zip(loc)
+            .take_while(|(a, b)| a == b)
+            .count();
+        let suffix = &loc[shared..];
+        out.write_all(&(shared as u16).to_le_bytes())?;
+        out.write_all(&(suffix.len() as u16).to_le_bytes())?;
+        out.write_all(suffix)?;
+        out.write_all(&record.content)?;
+        out.write_all(&record.partition.to_le_bytes())?;
+        self.previous.clear();
+        self.previous.extend_from_slice(loc);
+        Ok(())
     }
-    let mut loc = vec![0u8; len];
-    input.read_exact(&mut loc)?;
-    let mut content = [0u8; 16];
-    input.read_exact(&mut content)?;
-    let mut partition = [0u8; 4];
-    input.read_exact(&mut partition)?;
-    Ok(Some(Record {
-        loc: String::from_utf8(loc).map_err(|_| invalid("loc is not UTF-8"))?,
-        content,
-        partition: u32::from_le_bytes(partition),
-    }))
+
+    fn write_end(out: &mut impl Write) -> io::Result<()> {
+        out.write_all(&END.to_le_bytes())
+    }
+
+    /// Reads one record; `Ok(None)` at the end marker.
+    fn read(&mut self, input: &mut impl Read) -> io::Result<Option<Record>> {
+        let mut word = [0u8; 2];
+        input.read_exact(&mut word)?;
+        let shared = u16::from_le_bytes(word);
+        if shared == END {
+            return Ok(None);
+        }
+        let shared = shared as usize;
+        if shared > self.previous.len() {
+            return Err(invalid("snapshot prefix is longer than the previous loc"));
+        }
+        input.read_exact(&mut word)?;
+        let suffix = u16::from_le_bytes(word) as usize;
+        if shared + suffix == 0 || shared + suffix > MAX_LOC_BYTES {
+            return Err(invalid("snapshot loc length is out of range"));
+        }
+        self.previous.truncate(shared);
+        let start = self.previous.len();
+        self.previous.resize(start + suffix, 0);
+        input.read_exact(&mut self.previous[start..])?;
+        let mut content = [0u8; 16];
+        input.read_exact(&mut content)?;
+        let mut partition = [0u8; 4];
+        input.read_exact(&mut partition)?;
+        let loc = std::str::from_utf8(&self.previous)
+            .map_err(|_| invalid("loc is not UTF-8"))?
+            .to_owned();
+        Ok(Some(Record {
+            loc,
+            content,
+            partition: u32::from_le_bytes(partition),
+        }))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -117,6 +161,8 @@ struct SnapshotWriter<W: Write> {
     hasher: blake3::Hasher,
     count: u64,
     last: Option<Record>,
+    codec: Codec,
+    bytes: Vec<u8>,
 }
 
 impl<W: Write> SnapshotWriter<W> {
@@ -132,6 +178,8 @@ impl<W: Write> SnapshotWriter<W> {
             hasher,
             count: 0,
             last: None,
+            codec: Codec::default(),
+            bytes: Vec::with_capacity(256),
         })
     }
 
@@ -139,10 +187,10 @@ impl<W: Write> SnapshotWriter<W> {
         if self.last.as_ref().is_some_and(|last| *last > record) {
             return Err(io::Error::other("snapshot records are not sorted"));
         }
-        let mut bytes = Vec::with_capacity(record.loc.len() + 22);
-        write_record(&mut bytes, &record)?;
-        self.out.write_all(&bytes)?;
-        self.hasher.update(&bytes);
+        self.bytes.clear();
+        self.codec.write(&mut self.bytes, &record)?;
+        self.out.write_all(&self.bytes)?;
+        self.hasher.update(&self.bytes);
         self.count += 1;
         self.last = Some(record);
         Ok(())
@@ -150,7 +198,7 @@ impl<W: Write> SnapshotWriter<W> {
 
     fn finish(mut self) -> io::Result<(W, u64)> {
         let mut tail = Vec::with_capacity(10);
-        tail.extend_from_slice(&0u16.to_le_bytes());
+        Codec::write_end(&mut tail)?;
         tail.extend_from_slice(&self.count.to_le_bytes());
         self.hasher.update(&tail);
         self.out.write_all(&tail)?;
@@ -207,7 +255,7 @@ impl SnapshotBuilder {
         if record.loc.is_empty() || record.loc.len() > MAX_LOC_BYTES {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "loc must have 1 to 65535 bytes",
+                "loc must have 1 to 65534 bytes",
             ));
         }
         self.buffered += record.memory();
@@ -231,10 +279,11 @@ impl SnapshotBuilder {
             .join(format!(".snapshot-run-{}-{n}", std::process::id()));
         let mut out = BufWriter::new(File::create_new(&path)?);
         self.runs.push(path);
+        let mut codec = Codec::default();
         for record in self.buffer.drain(..) {
-            write_record(&mut out, &record)?;
+            codec.write(&mut out, &record)?;
         }
-        out.write_all(&0u16.to_le_bytes())?;
+        Codec::write_end(&mut out)?;
         out.flush()?;
         self.buffered = 0;
         Ok(())
@@ -252,19 +301,23 @@ impl SnapshotBuilder {
             self.spill()?;
             let mut readers = Vec::with_capacity(self.runs.len());
             for path in &self.runs {
-                readers.push(BufReader::with_capacity(64 * 1024, File::open(path)?));
+                readers.push((
+                    BufReader::with_capacity(64 * 1024, File::open(path)?),
+                    Codec::default(),
+                ));
             }
             // k-way merge; ties are broken by run index, but equal records
             // are identical, so the output does not depend on it.
             let mut heap = BinaryHeap::with_capacity(readers.len());
-            for (i, reader) in readers.iter_mut().enumerate() {
-                if let Some(record) = read_record(reader)? {
+            for (i, (reader, codec)) in readers.iter_mut().enumerate() {
+                if let Some(record) = codec.read(reader)? {
                     heap.push(Reverse((record, i)));
                 }
             }
             while let Some(Reverse((record, i))) = heap.pop() {
                 writer.push(record)?;
-                if let Some(next) = read_record(&mut readers[i])? {
+                let (reader, codec) = &mut readers[i];
+                if let Some(next) = codec.read(reader)? {
                     heap.push(Reverse((next, i)));
                 }
             }
@@ -318,6 +371,7 @@ impl<R: Read> Read for HashingReader<R> {
 /// then returns an error for a damaged file).
 pub struct SnapshotReader<R: Read> {
     input: HashingReader<R>,
+    codec: Codec,
     config: Digest,
     count: u64,
     last: Option<Record>,
@@ -342,6 +396,7 @@ impl<R: Read> SnapshotReader<R> {
         input.read_exact(&mut config)?;
         Ok(Self {
             input,
+            codec: Codec::default(),
             config,
             count: 0,
             last: None,
@@ -365,7 +420,7 @@ impl<R: Read> SnapshotReader<R> {
                 e
             }
         };
-        match read_record(&mut self.input).map_err(truncated)? {
+        match self.codec.read(&mut self.input).map_err(truncated)? {
             Some(record) => {
                 if self.last.as_ref().is_some_and(|last| *last > record) {
                     return Err(invalid("snapshot records are not sorted"));

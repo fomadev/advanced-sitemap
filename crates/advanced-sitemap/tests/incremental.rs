@@ -319,3 +319,178 @@ fn changed_policy_on_the_file_system_equals_full_publication() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ---------------------------------------------------------------------------
+// Phase B: URL-level snapshot and change report.
+
+struct StateDir(std::path::PathBuf);
+
+impl StateDir {
+    fn new(label: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!(
+            "advanced-sitemap-state-{label}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        Self(dir)
+    }
+}
+
+impl Drop for StateDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn with_state(mut config: EngineConfig, dir: &StateDir) -> EngineConfig {
+    let mut settings = advanced_sitemap::SnapshotSettings::new(&dir.0);
+    settings.memory_budget = 2_048; // force spilling to disk
+    settings.max_listed = 3;
+    config.snapshot = Some(settings);
+    config
+}
+
+fn changes(report: &GenerationReport) -> &advanced_sitemap::ChangesReport {
+    report.changes.as_ref().expect("changes report")
+}
+
+#[test]
+fn change_report_matches_the_known_changes() {
+    let strategy = PartitionStrategy::StableHash {
+        partitions: NonZeroU32::new(5).unwrap(),
+    };
+    let state = StateDir::new("oracle");
+    let mut config = with_state(config(strategy, PublishPolicy::Changed), &state);
+    // 5 stable-hash partitions must hold up to 100 URLs.
+    config.limits = PartitionLimits::default();
+    let store = MemoryStore::new();
+    let mut rng = Rng(2026);
+    let mut pages: BTreeMap<u64, u64> = (0..60).map(|id| (id, 0)).collect();
+
+    let first = run(&config, &pages, &mut store.clone()).unwrap();
+    let c = changes(&first);
+    assert!(!c.previous_snapshot);
+    assert_eq!(c.added, 60);
+
+    for step in 1..40 {
+        let before = pages.clone();
+        for _ in 0..rng.below(5) {
+            let id = rng.below(100);
+            match rng.below(3) {
+                0 => {
+                    pages.insert(id, step);
+                }
+                1 => {
+                    pages.remove(&id);
+                }
+                _ => {
+                    if let Some(v) = pages.get_mut(&id) {
+                        *v += 1;
+                    }
+                }
+            }
+        }
+        if pages.is_empty() {
+            pages.insert(0, step);
+        }
+        let added = pages.keys().filter(|k| !before.contains_key(k)).count() as u64;
+        let removed = before.keys().filter(|k| !pages.contains_key(k)).count() as u64;
+        // A version bump changes lastmod unless it maps to the same date.
+        let modified = pages
+            .iter()
+            .filter(|(k, v)| {
+                before
+                    .get(k)
+                    .is_some_and(|old| record(**k, *old) != record(**k, **v))
+            })
+            .count() as u64;
+
+        let report = run(&config, &pages, &mut store.clone()).unwrap();
+        let c = changes(&report);
+        assert!(c.previous_snapshot && !c.config_changed, "step {step}");
+        assert_eq!(
+            (c.added, c.removed, c.modified, c.moved),
+            (added, removed, modified, 0),
+            "step {step}"
+        );
+        assert_eq!(
+            c.unchanged + c.added + c.modified,
+            pages.len() as u64,
+            "step {step}"
+        );
+        assert!(c.added_urls.len() <= 3 && c.removed_urls.len() <= 3);
+        assert_eq!(
+            c.truncated,
+            added > 3 || removed > 3 || modified > 3,
+            "step {step}"
+        );
+    }
+}
+
+#[test]
+fn snapshot_follows_successful_publications_only() {
+    let state = StateDir::new("lifecycle");
+    let config = with_state(
+        config(PartitionStrategy::Sequential, PublishPolicy::All),
+        &state,
+    );
+    let pages: BTreeMap<u64, u64> = (0..10).map(|id| (id, 0)).collect();
+    let store = MemoryStore::new();
+    run(&config, &pages, &mut store.clone()).unwrap();
+    let path = state.0.join("sitemap.snapshot");
+    let saved = std::fs::read(&path).unwrap();
+
+    // A dry run reports changes but leaves the snapshot alone.
+    let mut changed = pages.clone();
+    changed.insert(50, 1);
+    let engine = Engine::new(config.clone()).unwrap();
+    let input: Vec<RawUrlRecord> = changed.iter().map(|(id, v)| record(*id, *v)).collect();
+    let dry = engine
+        .run(
+            records(input),
+            &mut advanced_sitemap::NullStore::new(),
+            RunMode::DryRun,
+        )
+        .unwrap();
+    assert_eq!(changes(&dry).added, 1);
+    assert_eq!(
+        std::fs::read(&path).unwrap(),
+        saved,
+        "dry run wrote the snapshot"
+    );
+
+    // A failed run (invalid record with the fail policy) does not either.
+    let engine = Engine::new(config.clone()).unwrap();
+    let bad = vec![RawUrlRecord::with_loc("not a url")];
+    let failed = engine
+        .run(records(bad), &mut store.clone(), RunMode::Publish)
+        .unwrap();
+    assert!(!failed.succeeded());
+    assert!(failed.changes.is_none());
+    assert_eq!(std::fs::read(&path).unwrap(), saved);
+
+    // A damaged snapshot is reported, ignored and replaced.
+    let mut damaged = saved.clone();
+    let middle = damaged.len() / 2;
+    damaged[middle] ^= 0xff;
+    std::fs::write(&path, &damaged).unwrap();
+    let report = run(&config, &pages, &mut store.clone()).unwrap();
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|d| d.code.as_str() == "SNAPSHOT_INVALID")
+    );
+    assert!(!changes(&report).previous_snapshot);
+    assert_eq!(std::fs::read(&path).unwrap(), saved, "snapshot not rebuilt");
+
+    // Settings that shape the output are tracked.
+    let mut other = config.clone();
+    other.limits = PartitionLimits::new(3, 52_428_800).unwrap();
+    let report = run(&other, &pages, &mut store.clone()).unwrap();
+    let c = changes(&report);
+    assert!(c.config_changed);
+    assert!(c.moved > 0, "smaller files move URLs to other partitions");
+    assert_eq!(c.modified + c.added + c.removed, 0);
+    assert!(!state.0.join("sitemap.snapshot.tmp").exists());
+}

@@ -105,7 +105,7 @@ Chaque phase est utile seule, mesurée, et protégée par l'oracle I1.
 | Phase | Contenu | Gain attendu | Mesure de validation |
 |---|---|---|---|
 | A (**faite**, voir ci-dessous) | Ne publier que les fichiers dont les octets changent, par comparaison avec le fichier publié | Moins d'écritures disque et un `lastmod` d'index stable | `generate` relancé sans changement : 0 fichier publié ; durée égale à `validate` |
-| B | Snapshot par URL (clé et contenu), Diff Engine, rapport de changements | Liste exacte des ajouts, retraits et modifications | Comparaison avec un diff calculé par relecture complète |
+| B (**faite** pour le moteur) | Snapshot par URL (clé et contenu), Diff Engine, rapport de changements | Liste exacte des ajouts, retraits et modifications | Comparaison avec les changements connus du test |
 | C | Stratégie `consistent-hash` (ADR-0012) et planner qui chiffre les déplacements | Agrandir le site sans déplacer la plupart des URL | Fraction d'URL déplacées mesurée contre 1/(N+1) |
 | D | Flux de changements (ajouts, mises à jour, suppressions) appliqués sur les fichiers publiés (ADR-0013) | Plus besoin de relire toute la source | Oracle I1 entre application du flux et régénération complète |
 
@@ -127,6 +127,23 @@ contrat existant.
   test CLI qui vérifie que la date de modification des fichiers identiques
   ne change pas.
 
+### Phase B : ce qui a été fait (2026-11-22)
+
+- Crate `sitemap-snapshot` : format binaire v1 trié, compressé par préfixe,
+  avec un compteur et une somme BLAKE3 en fin de fichier ; tri externe
+  sous budget mémoire ; diff en mémoire constante.
+- `state.directory` (ou `--state-dir`) active le snapshot et la section
+  `changes` du rapport. Désactivé par défaut. Le snapshot est remplacé
+  seulement après une publication réussie (I3) ; `validate` ne l'écrit pas.
+- Emplacement : choisi explicitement par l'utilisateur, aucun défaut, ce qui
+  laisse ouverte la question 2 ci-dessous sans risque de publier l'état.
+- Tests : rapport de changements comparé aux changements connus sur 40
+  étapes aléatoires, mode à blanc, exécution échouée, snapshot endommagé,
+  changement de réglages.
+- Mesures : voir `docs/performance/README.md`. Coût réel : +4 à +5,5 s à
+  1 M d'URL et +17 s à 5 M sur cette machine, mémoire bornée.
+- Reste à faire : `advanced-sitemap diff` entre deux dossiers publiés.
+
 ## 5. Questions ouvertes (à mesurer avant de trancher)
 
 1. ~~Coût de `fsync`~~ **Tranché par la mesure** : comparer après avoir
@@ -139,9 +156,9 @@ contrat existant.
    Le snapshot ne contient que des empreintes d'URL déjà publiques, mais il
    peut peser 32 octets par URL. Proposition : un dossier d'état séparé
    (`state.directory`, défaut `.advanced-sitemap/`), à valider.
-3. **Taille du snapshot par URL à 50 M d'URL** (environ 1,6 Go) : faut-il un
-   format trié sur disque dès la phase B, ou un seuil au-delà duquel seul le
-   snapshot de partitions est tenu ?
+3. ~~Taille du snapshot à 50 M d'URL~~ **Mesuré** : environ 45 octets par
+   URL après compression par préfixe, soit environ 2,2 Go à 50 M, trié sur
+   disque et lu en flux.
 4. **`lastmod` d'un index quand aucune entrée n'a de `lastmod`** : aujourd'hui
    l'index omet `lastmod`. Le moteur ne lisant jamais l'horloge, cela reste
    ainsi ; à confirmer.
