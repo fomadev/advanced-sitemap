@@ -20,7 +20,7 @@ explicite du propriétaire du projet.
 
 | Décision | Bloque |
 |---|---|
-| Approbation des ADR-0010 à 0013 (format du snapshot avec BLAKE3) | Stabilité des formats, 1.0 |
+| ~~Approbation des ADR-0010 à 0013~~ acceptés le 2026-11-22 | — |
 | ~~Clarifications FPL 1.1 et titulaire des droits~~ décidé le 2026-11-22 : FPL v1.0 conservée, Fordima Inc. | — |
 | Publication atomique d'ensemble (révisions + pointeur) ou maintien de l'ordre actuel | R2 |
 | MSRV 1.89 et politique MSRV | 1.0 |
@@ -31,9 +31,9 @@ explicite du propriétaire du projet.
 
 Une version n'est déclarée prête que si toutes sont vraies. Leur état au
 lot F est dans [release-readiness.md](release-readiness.md) : toutes sont
-remplies sauf l'approbation des formats (R18).
+remplies ; seule manque l'autorisation de publier.
 
-- [x] Aucun P0 ni P1 technique ouvert (R18 est une décision)
+- [x] Aucun P0 ni P1 ouvert
 - [x] Tests et CI verts sur les plateformes annoncées (5, ARM64 compris)
 - [x] Conformité XML vérifiée par des outils indépendants
 - [x] Tests de reprise après interruption (pannes injectées, arrêts brutaux)
@@ -46,7 +46,7 @@ remplies sauf l'approbation des formats (R18).
 - [x] Aucun secret dans les artefacts
 - [x] Aucun défaut connu de corruption ou de publication incohérente
   (l'ensemble mixte R2 est documenté, détecté et réparé)
-- [ ] ADR-0010 à 0013 approuvés (R18)
+- [x] ADR-0010 à 0013 acceptés (R18)
 
 ## 4. Version candidate (prévue)
 
