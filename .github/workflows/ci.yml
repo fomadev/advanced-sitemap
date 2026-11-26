@@ -52,7 +52,7 @@ jobs:
           cargo run --release --locked -q -p advanced-sitemap --example make_dataset -- 20000 determinism/data.jsonl
           python tools/determinism.py "target/release/advanced-sitemap${{ runner.os == 'Windows' && '.exe' || '' }}" determinism/data.jsonl determinism/work > determinism-${{ matrix.os }}.txt
           wc -l determinism-${{ matrix.os }}.txt
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: determinism-${{ matrix.os }}
           path: determinism-${{ matrix.os }}.txt
